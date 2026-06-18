@@ -62,6 +62,9 @@ All engines require your own API key — get them free or paid from each provide
 | Mistral | Mistral | [console.mistral.ai](https://console.mistral.ai) |
 | Cohere | Cohere | [dashboard.cohere.com](https://dashboard.cohere.com) |
 | xAI (Grok) | xAI | [console.x.ai](https://console.x.ai) |
+| DeepSeek | DeepSeek | platform.deepseek.com |
+| Meta Llama | Together AI | api.together.ai |
+| Ollama (local) | Self-hosted | ollama.ai — runs on your server |
 
 ## Self-Learning Feedback Loop
 

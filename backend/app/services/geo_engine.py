@@ -306,23 +306,23 @@ def run_geo_scan(brand_id: str, queries: list, org_id: str = None) -> dict:
         brand_context = desc_rows[0][0] if desc_rows and desc_rows[0][0] else ""
 
     # Build dynamic engine list based on org's available API keys
-    active_engines = list(GEO_ENGINES)  # always includes Groq
+    active_engines = []  # No default engines — all require BYOK
     if org_id:
+        groq_key = get_org_api_key(org_id, "groq")
         anthropic_key = get_org_api_key(org_id, "anthropic")
         openai_key = get_org_api_key(org_id, "openai")
         perplexity_key = get_org_api_key(org_id, "perplexity")
         gemini_key = get_org_api_key(org_id, "gemini")
-        if anthropic_key and anthropic_key != os.getenv("ANTHROPIC_API_KEY", ""):
+        if groq_key:
+            active_engines.append("Groq")
+        if anthropic_key:
             active_engines.append("Claude")
-        if openai_key and openai_key != os.getenv("OPENAI_API_KEY", ""):
+        if openai_key:
             active_engines.append("ChatGPT")
-        if perplexity_key and perplexity_key != os.getenv("PERPLEXITY_API_KEY", ""):
+        if perplexity_key:
             active_engines.append("Perplexity")
-        # Only add Gemini if org has their OWN key (free tier exhausted)
-        if gemini_key and gemini_key != os.getenv("GEMINI_API_KEY", ""):
-            if "Gemini" not in active_engines:
-                active_engines.append("Gemini")
-
+        if gemini_key:
+            active_engines.append("Gemini")
     # No engines configured — user needs to add API keys
     if not active_engines:
         return {

@@ -45,7 +45,7 @@ def get_org_api_key(org_id: str, provider: str) -> str:
 
 
 # Only real engines for now
-GEO_ENGINES = ["Groq"]  # Gemini added dynamically when org has paid API key
+GEO_ENGINES = []  # No default engines — all require BYOK
 
 
 def scrape_url(url: str) -> str:
@@ -322,6 +322,21 @@ def run_geo_scan(brand_id: str, queries: list, org_id: str = None) -> dict:
         if gemini_key and gemini_key != os.getenv("GEMINI_API_KEY", ""):
             if "Gemini" not in active_engines:
                 active_engines.append("Gemini")
+
+    # No engines configured — user needs to add API keys
+    if not active_engines:
+        return {
+            "brand": brand_name,
+            "domain": domain,
+            "visibility_score": None,
+            "total_scans": 0,
+            "times_mentioned": 0,
+            "engines_used": [],
+            "real_data": False,
+            "status": "no_engines",
+            "message": "No API keys configured. Add your API keys in Settings to start scanning.",
+            "setup_url": "/settings"
+        }
 
     total_scans = 0
     total_mentioned = 0

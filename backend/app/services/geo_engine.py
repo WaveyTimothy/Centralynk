@@ -89,7 +89,7 @@ def query_groq_real(query: str, brand_name: str, brand_context: str = "", client
         try:
             # Step 1: real Groq response to the query
             # Inject brand context to prevent domain confusion (GEO = geography vs GEO = generative engine optimization)
-            contextualized_query = f"{query}" if not brand_context else f"{query}\n\nContext: I am researching a brand called {brand_name} which operates in this space: {brand_context[:200]}"
+            contextualized_query = query  # Send raw query — no brand context injection
             completion = _client.chat.completions.create(
                 model="llama-3.3-70b-versatile",
                 messages=[{"role": "user", "content": contextualized_query}],
@@ -365,9 +365,9 @@ def run_geo_scan(brand_id: str, queries: list, org_id: str = None) -> dict:
                 if org_groq_key != os.getenv("GROQ_API_KEY", ""):
                     import groq as groq_lib
                     org_client = groq_lib.Groq(api_key=org_groq_key)
-                    result = query_groq_real(query, brand_name, brand_context=brand_context[:300], client=org_client)
+                    result = query_groq_real(query, brand_name, brand_context="", client=org_client)
                 else:
-                    result = query_groq_real(query, brand_name, brand_context=brand_context[:300])
+                    result = query_groq_real(query, brand_name, brand_context="")
 
             # Trend diff
             if previous:

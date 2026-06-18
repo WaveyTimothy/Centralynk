@@ -1,0 +1,15 @@
+.env
+*.env
+.env.*
+__pycache__/
+*.pyc
+*.pem
+*.key
+secrets/
+.env
+*.deb
+pgdata/
+.env
+*.pyc
+__pycache__/
+.DS_Store

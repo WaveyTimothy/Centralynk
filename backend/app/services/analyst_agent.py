@@ -30,6 +30,7 @@ from typing import Optional
 from pydantic import BaseModel, Field
 from groq import Groq
 from app.core.database import execute_query, execute_write
+from app.services.feedback_store import auto_score_and_save
 
 groq_client = Groq(api_key=os.getenv("GROQ_API_KEY", ""))
 

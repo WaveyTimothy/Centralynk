@@ -51,6 +51,9 @@ services:
       - SECRET_KEY=${SECRET_KEY}
       - ENVIRONMENT=production
       - ADMIN_KEY=${ADMIN_KEY}
+      - FEEDBACK_LOOP_PROVIDER=${FEEDBACK_LOOP_PROVIDER:-ollama}
+      - FEEDBACK_LOOP_MODEL=${FEEDBACK_LOOP_MODEL:-llama3.2:3b}
+      - OLLAMA_HOST=${OLLAMA_HOST:-http://172.17.0.1:11434}
     depends_on:
       postgres:
         condition: service_healthy

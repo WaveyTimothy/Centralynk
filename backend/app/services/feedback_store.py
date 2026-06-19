@@ -29,6 +29,37 @@ from app.core.database import execute_query, execute_write
 
 groq_client = Groq(api_key=os.getenv("GROQ_API_KEY", ""))
 
+# Configurable feedback loop model
+FEEDBACK_LOOP_PROVIDER = os.getenv("FEEDBACK_LOOP_PROVIDER", "ollama")
+FEEDBACK_LOOP_MODEL = os.getenv("FEEDBACK_LOOP_MODEL", "llama3.2:3b")
+OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://host.docker.internal:11434")
+
+def score_with_ollama(text: str) -> int:
+    """Score output quality using local Ollama model."""
+    import httpx
+    try:
+        prompt = f"""You are evaluating the quality of a GEO (Generative Engine Optimization) recommendation.
+Score this recommendation from 1-5 based on:
+- Is it specific and actionable? (not vague)
+- Would it actually improve AI visibility?
+- Is it relevant to the brand?
+
+Recommendation: {text[:500]}
+
+Reply with ONLY a single digit 1-5. Nothing else."""
+        
+        resp = httpx.post(
+            f"{OLLAMA_HOST}/api/generate",
+            json={"model": FEEDBACK_LOOP_MODEL, "prompt": prompt, "stream": False},
+            timeout=30
+        )
+        result = resp.json().get("response", "3").strip()
+        score = int(result[0]) if result and result[0].isdigit() else 3
+        return max(1, min(5, score))
+    except Exception as e:
+        print(f"Ollama scoring failed: {e}")
+        return 3  # neutral fallback
+
 # Configurable feedback loop model — swap via .env
 FEEDBACK_LOOP_MODEL = os.getenv("FEEDBACK_LOOP_MODEL", "llama-3.3-70b-versatile")
 FEEDBACK_LOOP_PROVIDER = os.getenv("FEEDBACK_LOOP_PROVIDER", "groq")

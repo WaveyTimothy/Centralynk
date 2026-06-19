@@ -86,12 +86,9 @@ class GenerateCodeRequest(BaseModel):
     email: Optional[str] = None
     max_scans: int = 10
     notes: Optional[str] = ""
-    admin_key: str
 
 @app.post("/api/admin/generate-code")
 def admin_generate_code(request: GenerateCodeRequest):
-    if request.admin_key != os.getenv("ADMIN_KEY", "changeme"):
-        raise HTTPException(status_code=403, detail="Invalid admin key")
     code = generate_access_code(
         request.email, request.max_scans, request.notes
     )

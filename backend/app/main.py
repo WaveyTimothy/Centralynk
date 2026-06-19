@@ -1206,3 +1206,11 @@ def delete_waitlist_entry(waitlist_id: str, credentials: HTTPAuthorizationCreden
             raise HTTPException(status_code=403)
     execute_write("DELETE FROM waitlist WHERE id = %s", (waitlist_id,))
     return {"status": "deleted"}
+
+@app.delete("/api/brands/{brand_id}/recommendations/{rec_id}")
+def delete_recommendation(brand_id: str, rec_id: str, user: dict = Depends(get_current_user)):
+    execute_write(
+        "DELETE FROM recommendations WHERE id = %s AND brand_id = %s",
+        (rec_id, brand_id)
+    )
+    return {"status": "deleted"}

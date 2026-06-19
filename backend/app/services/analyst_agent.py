@@ -459,9 +459,23 @@ def run_analyst_agent(brand_id: str) -> AnalystReport:
         trend_summary=trend,
     )
 
+    print(f"[DEBUG] recommendations count before save: {len(recommendations)}", flush=True)
     # Persist
     _save_recommendations(recommendations)
     _save_report_metadata(report)
+
+    # Auto-score recommendations using Ollama feedback loop
+    try:
+        for rec in recommendations:
+            auto_score_and_save(
+                agent_name="analyst_agent",
+                output_text=rec.recommendation,
+                context_summary="Brand visibility analysis",
+                evidence=rec.evidence
+            )
+        print(f"[FEEDBACK] Scored {len(recommendations)} recommendations", flush=True)
+    except Exception as e:
+        print(f"[FEEDBACK] Scoring failed: {e}", flush=True)
 
     return report
 

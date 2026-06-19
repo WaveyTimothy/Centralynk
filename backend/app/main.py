@@ -215,7 +215,10 @@ def get_dashboard(
             COUNT(*) as total,
             SUM(CASE WHEN brand_mentioned THEN 1 ELSE 0 END) as mentioned,
             engine_name,
-            AVG(position) as avg_position
+            AVG(position) as avg_position,
+            SUM(CASE WHEN sentiment = 'positive' THEN 1 ELSE 0 END) as positive,
+            SUM(CASE WHEN sentiment = 'neutral' THEN 1 ELSE 0 END) as neutral,
+            SUM(CASE WHEN sentiment = 'negative' THEN 1 ELSE 0 END) as negative
         FROM engine_scans 
         WHERE brand_id = %s
         GROUP BY engine_name
@@ -224,21 +227,41 @@ def get_dashboard(
     engine_stats = [
         {
             "engine": r[2],
-            "total_scans": r[0],
-            "mentions": r[1],
+            "total_scans": int(r[0]),
+            "mentions": int(r[1]),
             "avg_position": float(r[3]) if r[3] else 0,
-            "visibility_pct": round(r[1]/r[0]*100, 1) if r[0] > 0 else 0
+            "visibility_pct": round(r[1]/r[0]*100, 1) if r[0] > 0 else 0,
+            "sentiment": {
+                "positive": int(r[4]),
+                "neutral": int(r[5]),
+                "negative": int(r[6])
+            }
         }
         for r in rows
     ]
 
     total = sum(e["total_scans"] for e in engine_stats)
     mentioned = sum(e["mentions"] for e in engine_stats)
+    total_positive = sum(e["sentiment"]["positive"] for e in engine_stats)
+    total_neutral = sum(e["sentiment"]["neutral"] for e in engine_stats)
+    total_negative = sum(e["sentiment"]["negative"] for e in engine_stats)
+
+    # Overall sentiment score (0-100)
+    sentiment_score = round(
+        (total_positive * 100 + total_neutral * 50) / mentioned
+        if mentioned > 0 else 0
+    )
 
     return {
         "overall_visibility": round(mentioned/total*100, 1) if total > 0 else 0,
         "total_scans": total,
         "total_mentions": mentioned,
+        "sentiment_breakdown": {
+            "positive": total_positive,
+            "neutral": total_neutral,
+            "negative": total_negative,
+            "score": sentiment_score
+        },
         "by_engine": engine_stats
     }
 
@@ -1211,3 +1234,29 @@ def delete_recommendation(brand_id: str, rec_id: str, user: dict = Depends(get_c
         (rec_id, brand_id)
     )
     return {"status": "deleted"}
+
+@app.get("/api/brands/{brand_id}/scans/{scan_id}/response")
+def get_scan_response(brand_id: str, scan_id: str, user: dict = Depends(get_current_user)):
+    """Get the full AI response for a specific scan — shows how AI mentioned the brand."""
+    rows = execute_query("""
+        SELECT engine_name, query, response, brand_mentioned, 
+               sentiment, position, scanned_at, cited_sources
+        FROM engine_scans
+        WHERE id = %s AND brand_id = %s
+    """, (scan_id, brand_id))
+    
+    if not rows:
+        raise HTTPException(status_code=404, detail="Scan not found")
+    
+    r = rows[0]
+    return {
+        "engine": r[0],
+        "query": r[1],
+        "response": r[2],
+        "brand_mentioned": r[3],
+        "sentiment": r[4],
+        "position": r[5],
+        "scanned_at": str(r[6]),
+        "cited_sources": r[7] or [],
+        "insight": f"AI {'mentioned' if r[3] else 'did not mention'} your brand with {r[4]} sentiment"
+    }

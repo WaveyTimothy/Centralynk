@@ -1,6 +1,5 @@
 import os
 import jwt
-import base64
 from datetime import datetime, timedelta, timezone
 from fastapi import HTTPException, Security
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -36,13 +35,7 @@ def verify_token(token: str) -> tuple[str, str]:
     except jwt.InvalidTokenError:
         pass
 
-    # Fall back to legacy base64 (remove after all users re-login)
-    try:
-        decoded = base64.b64decode(token).decode()
-        email, code = decoded.split(":", 1)
-        return email, code
-    except Exception:
-        raise HTTPException(status_code=401, detail="Invalid token")
+    raise HTTPException(status_code=401, detail="Invalid token — please log in again")
 
 def get_current_user(
     credentials: HTTPAuthorizationCredentials = Security(security)

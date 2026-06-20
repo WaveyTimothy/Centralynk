@@ -20,7 +20,7 @@ Centralynk is an open-source **Generative Engine Optimization (GEO)** platform. 
 
 - 🔍 **Real GEO scanning** — actual API calls to AI engines, no simulations
 - 🤖 **AI analyst agent** — reads scan data, writes structured recommendations
-- 📈 **Self-learning feedback loop** — every output scored, quality improves over time
+- 📈 **Self-learning feedback loop — recommendations scored by local Ollama model, best outputs injected as examples into future prompts
 - 📊 **Visibility trend chart** — track your score over time
 - 🏆 **Competitor tracking** — compare your visibility vs competitors
 - 📄 **llms.txt generator** — tell AI crawlers how to cite your brand
@@ -29,6 +29,10 @@ Centralynk is an open-source **Generative Engine Optimization (GEO)** platform. 
 - 🏢 **Multi-tenant** — multiple organisations, complete data isolation
 - 🔑 **BYOK** — bring your own API keys (8 providers)
 - 🏠 **Self-hosted** — your data never leaves your infrastructure
+- 📊 **Sentiment analysis — track positive, neutral, negative AI mentions
+- 🔍 **Citation tracking — discover which sources AI cites alongside your brand
+
+
 
 ## Quick Start
 

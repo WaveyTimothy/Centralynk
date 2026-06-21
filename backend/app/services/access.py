@@ -103,6 +103,9 @@ def validate_access_code(code: str, email: str) -> dict:
     }
 
 def check_scan_limit(email: str) -> dict:
+    # Admin account has no limits
+    if email == "oscar@centralynk.com":
+        return {"allowed": True, "reason": "admin"}
     """Check if user can run more scans"""
     rows = execute_query("""
         SELECT u.scans_today, u.total_scans, ac.max_scans, ac.scans_used

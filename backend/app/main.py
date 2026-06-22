@@ -1170,8 +1170,8 @@ def get_citation_sources(brand_id: str, user: dict = Depends(get_current_user)):
         "tip": "Domains that appear alongside your brand are your citation allies. Get mentioned on them more."
     }
 
-@app.post("/api/admin/waitlist/{waitlist_id}/invite")
-def mark_waitlist_invited(waitlist_id: str, credentials: HTTPAuthorizationCredentials = Security(security)):
+@app.post("/api/admin/waitlist/{email}/invite")
+def mark_waitlist_invited(email: str, credentials: HTTPAuthorizationCredentials = Security(security)):
     try:
         import jwt as pyjwt
         payload = pyjwt.decode(credentials.credentials, os.getenv("SECRET_KEY", "change-me"), algorithms=["HS256"])
@@ -1182,10 +1182,10 @@ def mark_waitlist_invited(waitlist_id: str, credentials: HTTPAuthorizationCreden
             raise HTTPException(status_code=403)
     
     execute_write(
-        "UPDATE waitlist SET invited = true WHERE id = %s",
-        (waitlist_id,)
+        "UPDATE waitlist SET invited = true WHERE email = %s",
+        (email,)
     )
-    return {"status": "marked as invited"}
+    return {"status": "marked as invited", "email": email}
 
 @app.get("/api/access/waitlist/count")
 def get_waitlist_count():

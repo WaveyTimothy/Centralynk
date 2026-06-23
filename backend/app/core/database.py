@@ -77,7 +77,34 @@ def init_schema():
                     created_at TIMESTAMPTZ DEFAULT NOW()
                 );
 
+                CREATE TABLE IF NOT EXISTS tracked_competitors (
+                    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                    brand_id UUID REFERENCES brands(id) ON DELETE CASCADE,
+                    org_id TEXT,
+                    competitor_name TEXT NOT NULL,
+                    competitor_domain TEXT NOT NULL,
+                    created_at TIMESTAMPTZ DEFAULT NOW(),
+                    UNIQUE (brand_id, competitor_domain)
+                );
+
+                CREATE TABLE IF NOT EXISTS competitor_scans (
+                    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                    brand_id UUID REFERENCES brands(id) ON DELETE CASCADE,
+                    competitor_id UUID NOT NULL,
+                    competitor_name TEXT NOT NULL,
+                    competitor_domain TEXT NOT NULL,
+                    engine_name TEXT NOT NULL,
+                    query TEXT NOT NULL,
+                    brand_mentioned BOOLEAN DEFAULT FALSE,
+                    sentiment TEXT,
+                    position INTEGER DEFAULT 0,
+                    response TEXT,
+                    scanned_at TIMESTAMPTZ DEFAULT NOW()
+                );
+
                 CREATE INDEX IF NOT EXISTS idx_scans_brand ON engine_scans(brand_id);
                 CREATE INDEX IF NOT EXISTS idx_brands_domain ON brands(domain);
+                CREATE INDEX IF NOT EXISTS idx_competitor_scans_brand ON competitor_scans(brand_id);
+                CREATE INDEX IF NOT EXISTS idx_competitor_scans_competitor ON competitor_scans(competitor_id);
             """)
         conn.commit()

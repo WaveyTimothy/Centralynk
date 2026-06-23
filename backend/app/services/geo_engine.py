@@ -438,6 +438,186 @@ def run_geo_scan(brand_id: str, queries: list, org_id: str = None) -> dict:
     }
 
 
+def _analyze_response(raw_response: str, brand_name: str, engine: str, query: str) -> dict:
+    """Score an AI engine's raw response for brand visibility using Groq as the analyzer."""
+    analysis_prompt = f"""Analyze this AI response for brand visibility.
+
+Query: "{query}"
+Brand to track: "{brand_name}"
+AI Response: "{raw_response[:1000]}"
+
+Return ONLY valid JSON, no markdown:
+{{
+    "brand_mentioned": true or false,
+    "position": 0,
+    "sentiment": "positive|neutral|negative|not_mentioned",
+    "competitors": ["name1", "name2"],
+    "suggestion": "one specific improvement tip"
+}}"""
+    try:
+        analysis = groq_client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[{"role": "user", "content": analysis_prompt}],
+            max_tokens=256,
+            temperature=0.1,
+        )
+        raw = analysis.choices[0].message.content.strip()
+        start = raw.find("{")
+        end = raw.rfind("}") + 1
+        if start != -1 and end != 0:
+            result = json.loads(raw[start:end])
+            result["response"] = raw_response[:500]
+            result["engine"] = engine
+            result["real"] = True
+            return result
+    except Exception:
+        pass
+    return {
+        "engine": engine,
+        "brand_mentioned": False,
+        "position": 0,
+        "sentiment": "error",
+        "competitors": [],
+        "suggestion": "",
+        "response": raw_response[:500],
+        "real": True,
+    }
+
+
+def run_competitor_benchmark(brand_id: str, org_id: str) -> dict:
+    """
+    Run GEO scans against all tracked competitors using the brand's last-used queries.
+    Stores per-scan results in competitor_scans and returns side-by-side visibility scores.
+    """
+    brand_rows = execute_query(
+        "SELECT name, domain FROM brands WHERE id = %s", (brand_id,)
+    )
+    if not brand_rows:
+        return {"error": "Brand not found"}
+    brand_name, brand_domain = brand_rows[0]
+
+    comp_rows = execute_query(
+        "SELECT id, competitor_name, competitor_domain FROM tracked_competitors WHERE brand_id = %s ORDER BY created_at",
+        (brand_id,)
+    )
+    if not comp_rows:
+        return {"error": "No competitors tracked — add competitors via POST /api/brands/{brand_id}/competitors"}
+
+    query_rows = execute_query("""
+        SELECT DISTINCT query FROM engine_scans
+        WHERE brand_id = %s
+        ORDER BY query
+        LIMIT 5
+    """, (brand_id,))
+    if not query_rows:
+        return {"error": "No brand scans found — run a brand scan first so the benchmark uses the same queries"}
+
+    queries = [r[0] for r in query_rows]
+
+    active_engines = []
+    if org_id:
+        for provider, label in [("groq", "Groq"), ("anthropic", "Claude"),
+                                  ("openai", "ChatGPT"), ("perplexity", "Perplexity"),
+                                  ("gemini", "Gemini")]:
+            if get_org_api_key(org_id, provider):
+                active_engines.append(label)
+    if not active_engines:
+        return {"error": "No API keys configured", "setup_url": "/settings"}
+
+    # Brand's own cached visibility (from existing scans — not re-scanned here)
+    brand_vis = execute_query("""
+        SELECT COUNT(*), SUM(CASE WHEN brand_mentioned THEN 1 ELSE 0 END)
+        FROM engine_scans WHERE brand_id = %s
+    """, (brand_id,))
+    brand_total = int(brand_vis[0][0] or 0)
+    brand_mentioned_count = int(brand_vis[0][1] or 0)
+    brand_score = round(brand_mentioned_count / max(brand_total, 1) * 100, 1)
+
+    competitors_results = []
+
+    for comp_id, comp_name, comp_domain in comp_rows:
+        total_scans = 0
+        total_mentioned = 0
+        engine_breakdown = {}
+
+        for query in queries:
+            for engine in active_engines:
+                if engine == "Claude":
+                    result = query_anthropic_real(query, comp_name, "", get_org_api_key(org_id, "anthropic"))
+                elif engine == "ChatGPT":
+                    result = query_openai_real(query, comp_name, "", get_org_api_key(org_id, "openai"))
+                elif engine == "Perplexity":
+                    result = query_perplexity_real(query, comp_name, "", get_org_api_key(org_id, "perplexity"))
+                elif engine == "Gemini":
+                    result = query_gemini_real(query, comp_name)
+                else:  # Groq
+                    org_groq_key = get_org_api_key(org_id, "groq")
+                    if org_groq_key != os.getenv("GROQ_API_KEY", ""):
+                        import groq as groq_lib
+                        org_client = groq_lib.Groq(api_key=org_groq_key)
+                        result = query_groq_real(query, comp_name, client=org_client)
+                    else:
+                        result = query_groq_real(query, comp_name)
+
+                execute_write("""
+                    INSERT INTO competitor_scans
+                    (brand_id, competitor_id, competitor_name, competitor_domain,
+                     engine_name, query, brand_mentioned, sentiment, position, response)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """, (
+                    brand_id, str(comp_id), comp_name, comp_domain,
+                    engine, query,
+                    result.get("brand_mentioned", False),
+                    result.get("sentiment", "not_mentioned"),
+                    result.get("position", 0),
+                    (result.get("response") or "")[:500]
+                ))
+
+                mentioned = result.get("brand_mentioned", False)
+                if mentioned:
+                    total_mentioned += 1
+                total_scans += 1
+
+                if engine not in engine_breakdown:
+                    engine_breakdown[engine] = {"scans": 0, "mentions": 0}
+                engine_breakdown[engine]["scans"] += 1
+                if mentioned:
+                    engine_breakdown[engine]["mentions"] += 1
+
+        comp_score = round(total_mentioned / max(total_scans, 1) * 100, 1)
+        competitors_results.append({
+            "id": str(comp_id),
+            "name": comp_name,
+            "domain": comp_domain,
+            "visibility_score": comp_score,
+            "total_scans": total_scans,
+            "times_mentioned": total_mentioned,
+            "by_engine": [
+                {
+                    "engine": eng,
+                    "scans": stats["scans"],
+                    "mentions": stats["mentions"],
+                    "visibility_pct": round(stats["mentions"] / max(stats["scans"], 1) * 100, 1),
+                }
+                for eng, stats in engine_breakdown.items()
+            ],
+        })
+
+    return {
+        "brand": {
+            "name": brand_name,
+            "domain": brand_domain,
+            "visibility_score": brand_score,
+            "total_scans": brand_total,
+            "times_mentioned": brand_mentioned_count,
+        },
+        "competitors": sorted(competitors_results, key=lambda x: x["visibility_score"], reverse=True),
+        "queries_used": queries,
+        "engines_used": active_engines,
+        "status": "complete",
+    }
+
+
 def query_anthropic_real(query: str, brand_name: str, brand_context: str = "", api_key: str = "") -> dict:
     """Real Anthropic Claude call via httpx."""
     if not api_key:

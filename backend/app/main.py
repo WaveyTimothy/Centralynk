@@ -9,7 +9,7 @@ import os
 import base64
 from app.core.database import execute_query, execute_write, init_schema
 from app.core.auth import get_current_user, security
-from app.services.geo_engine import run_geo_scan
+from app.services.geo_engine import run_geo_scan, run_competitor_benchmark
 from app.services.access import (
     init_access_tables, generate_access_code,
     validate_access_code, check_scan_limit,
@@ -766,6 +766,25 @@ def remove_competitor(brand_id: str, competitor_id: str, user: dict = Depends(ge
         (competitor_id, brand_id)
     )
     return {"status": "removed"}
+
+@app.get("/api/brands/{brand_id}/competitors/benchmark")
+def get_competitor_benchmark(brand_id: str, user: dict = Depends(get_current_user)):
+    """
+    Run GEO scans against all tracked competitors using the brand's last-used queries.
+    Returns side-by-side visibility scores: your brand vs each competitor, per engine.
+    Counts as one scan against the user's quota.
+    """
+    limit = check_scan_limit(user["email"])
+    if not limit["allowed"]:
+        raise HTTPException(status_code=429, detail=limit["reason"])
+
+    result = run_competitor_benchmark(brand_id, org_id=user["org_id"])
+
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+
+    increment_scan_count(user["email"])
+    return result
 
 @app.get("/api/brands/{brand_id}/competitor-report")
 def competitor_report(brand_id: str, user: dict = Depends(get_current_user)):

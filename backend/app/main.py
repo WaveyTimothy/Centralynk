@@ -9,7 +9,7 @@ import os
 import base64
 from app.core.database import execute_query, execute_write, init_schema
 from app.core.auth import get_current_user, security
-from app.services.geo_engine import run_geo_scan, run_competitor_benchmark
+from app.services.geo_engine import run_geo_scan
 from app.services.access import (
     init_access_tables, generate_access_code,
     validate_access_code, check_scan_limit,
@@ -752,11 +752,15 @@ def get_competitors(brand_id: str, user: dict = Depends(get_current_user)):
 
 @app.post("/api/brands/{brand_id}/competitors")
 def add_competitor(brand_id: str, body: dict, user: dict = Depends(get_current_user)):
+    from urllib.parse import urlparse
+    raw = body.get("domain", "")
+    domain = urlparse(raw if "://" in raw else "https://" + raw).netloc
+    domain = domain.replace("www.", "")
     execute_write("""
         INSERT INTO tracked_competitors (brand_id, org_id, competitor_name, competitor_domain)
         VALUES (%s, %s, %s, %s)
         ON CONFLICT DO NOTHING
-    """, (brand_id, user["org_id"], body.get("name"), body.get("domain")))
+    """, (brand_id, user["org_id"], body.get("name"), domain))
     return {"status": "added"}
 
 @app.delete("/api/brands/{brand_id}/competitors/{competitor_id}")
@@ -769,22 +773,107 @@ def remove_competitor(brand_id: str, competitor_id: str, user: dict = Depends(ge
 
 @app.get("/api/brands/{brand_id}/competitors/benchmark")
 def get_competitor_benchmark(brand_id: str, user: dict = Depends(get_current_user)):
-    """
-    Run GEO scans against all tracked competitors using the brand's last-used queries.
-    Returns side-by-side visibility scores: your brand vs each competitor, per engine.
-    Counts as one scan against the user's quota.
-    """
+    """Read cached benchmark results from competitor_scans — never runs live scans."""
+    brand_rows = execute_query(
+        "SELECT name, domain FROM brands WHERE id = %s", (brand_id,)
+    )
+    if not brand_rows:
+        raise HTTPException(status_code=404, detail="Brand not found")
+    brand_name, brand_domain = brand_rows[0]
+
+    brand_vis = execute_query("""
+        SELECT COUNT(*), SUM(CASE WHEN brand_mentioned THEN 1 ELSE 0 END)
+        FROM engine_scans WHERE brand_id = %s
+    """, (brand_id,))
+    brand_total = int(brand_vis[0][0] or 0)
+    brand_mentioned_count = int(brand_vis[0][1] or 0)
+    brand_score = round(brand_mentioned_count / max(brand_total, 1) * 100, 1)
+
+    comp_rows = execute_query("""
+        SELECT
+            competitor_id::text,
+            competitor_name,
+            competitor_domain,
+            engine_name,
+            COUNT(*) as total_scans,
+            SUM(CASE WHEN brand_mentioned THEN 1 ELSE 0 END) as mentions
+        FROM competitor_scans
+        WHERE brand_id = %s
+        GROUP BY competitor_id, competitor_name, competitor_domain, engine_name
+        ORDER BY competitor_name, engine_name
+    """, (brand_id,))
+
+    competitors: dict = {}
+    for comp_id, comp_name, comp_domain, engine, total, mentions in comp_rows:
+        total, mentions = int(total), int(mentions)
+        if comp_id not in competitors:
+            competitors[comp_id] = {
+                "id": comp_id,
+                "name": comp_name,
+                "domain": comp_domain,
+                "total_scans": 0,
+                "times_mentioned": 0,
+                "by_engine": [],
+            }
+        competitors[comp_id]["total_scans"] += total
+        competitors[comp_id]["times_mentioned"] += mentions
+        competitors[comp_id]["by_engine"].append({
+            "engine": engine,
+            "scans": total,
+            "mentions": mentions,
+            "visibility_pct": round(mentions / max(total, 1) * 100, 1),
+        })
+
+    competitors_list = []
+    for c in competitors.values():
+        c["visibility_score"] = round(c["times_mentioned"] / max(c["total_scans"], 1) * 100, 1)
+        competitors_list.append(c)
+    competitors_list.sort(key=lambda x: x["visibility_score"], reverse=True)
+
+    meta_rows = execute_query(
+        "SELECT DISTINCT query, engine_name FROM competitor_scans WHERE brand_id = %s",
+        (brand_id,)
+    )
+    queries_used = list({r[0] for r in meta_rows})
+    engines_used = list({r[1] for r in meta_rows})
+
+    return {
+        "brand": {
+            "name": brand_name,
+            "domain": brand_domain,
+            "visibility_score": brand_score,
+            "total_scans": brand_total,
+            "times_mentioned": brand_mentioned_count,
+        },
+        "competitors": competitors_list,
+        "queries_used": queries_used,
+        "engines_used": engines_used,
+        "status": "cached" if competitors_list else "no_data",
+    }
+
+@app.post("/api/brands/{brand_id}/competitors/benchmark/run")
+def run_competitor_benchmark_endpoint(brand_id: str, user: dict = Depends(get_current_user)):
+    """Trigger a live competitor benchmark scan as a background Celery task."""
     limit = check_scan_limit(user["email"])
     if not limit["allowed"]:
         raise HTTPException(status_code=429, detail=limit["reason"])
 
-    result = run_competitor_benchmark(brand_id, org_id=user["org_id"])
-
-    if "error" in result:
-        raise HTTPException(status_code=400, detail=result["error"])
-
+    from app.tasks import competitor_benchmark_task
+    task = competitor_benchmark_task.delay(brand_id, user["org_id"])
     increment_scan_count(user["email"])
-    return result
+    return {"task_id": task.id}
+
+@app.get("/api/brands/{brand_id}/competitors/benchmark/status/{task_id}")
+def get_benchmark_status(brand_id: str, task_id: str, user: dict = Depends(get_current_user)):
+    """Return Celery task status for a benchmark run."""
+    from app.worker import celery_app
+    task = celery_app.AsyncResult(task_id)
+    response: dict = {"task_id": task_id, "status": task.state.lower()}
+    if task.state == "SUCCESS":
+        response["result"] = task.result
+    elif task.state == "FAILURE":
+        response["error"] = str(task.info)
+    return response
 
 @app.get("/api/brands/{brand_id}/competitor-report")
 def competitor_report(brand_id: str, user: dict = Depends(get_current_user)):

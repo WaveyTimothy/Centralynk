@@ -514,13 +514,21 @@ def run_competitor_benchmark(brand_id: str, org_id: str) -> dict:
 
     queries = [r[0] for r in query_rows]
 
+    # Same engine-selection logic as run_geo_scan: fetch each key once,
+    # use the same variable for the gate check and the dispatch call.
+    groq_key       = get_org_api_key(org_id, "groq")      if org_id else ""
+    anthropic_key  = get_org_api_key(org_id, "anthropic") if org_id else ""
+    openai_key     = get_org_api_key(org_id, "openai")    if org_id else ""
+    perplexity_key = get_org_api_key(org_id, "perplexity") if org_id else ""
+    gemini_key     = get_org_api_key(org_id, "gemini")    if org_id else ""
+
     active_engines = []
-    if org_id:
-        for provider, label in [("groq", "Groq"), ("anthropic", "Claude"),
-                                  ("openai", "ChatGPT"), ("perplexity", "Perplexity"),
-                                  ("gemini", "Gemini")]:
-            if get_org_api_key(org_id, provider):
-                active_engines.append(label)
+    if groq_key:       active_engines.append("Groq")
+    if anthropic_key:  active_engines.append("Claude")
+    if openai_key:     active_engines.append("ChatGPT")
+    if perplexity_key: active_engines.append("Perplexity")
+    if gemini_key:     active_engines.append("Gemini")
+
     if not active_engines:
         return {"error": "No API keys configured", "setup_url": "/settings"}
 
@@ -543,18 +551,17 @@ def run_competitor_benchmark(brand_id: str, org_id: str) -> dict:
         for query in queries:
             for engine in active_engines:
                 if engine == "Claude":
-                    result = query_anthropic_real(query, comp_name, "", get_org_api_key(org_id, "anthropic"))
+                    result = query_anthropic_real(query, comp_name, "", anthropic_key)
                 elif engine == "ChatGPT":
-                    result = query_openai_real(query, comp_name, "", get_org_api_key(org_id, "openai"))
+                    result = query_openai_real(query, comp_name, "", openai_key)
                 elif engine == "Perplexity":
-                    result = query_perplexity_real(query, comp_name, "", get_org_api_key(org_id, "perplexity"))
+                    result = query_perplexity_real(query, comp_name, "", perplexity_key)
                 elif engine == "Gemini":
                     result = query_gemini_real(query, comp_name)
                 else:  # Groq
-                    org_groq_key = get_org_api_key(org_id, "groq")
-                    if org_groq_key != os.getenv("GROQ_API_KEY", ""):
+                    if groq_key != os.getenv("GROQ_API_KEY", ""):
                         import groq as groq_lib
-                        org_client = groq_lib.Groq(api_key=org_groq_key)
+                        org_client = groq_lib.Groq(api_key=groq_key)
                         result = query_groq_real(query, comp_name, client=org_client)
                     else:
                         result = query_groq_real(query, comp_name)

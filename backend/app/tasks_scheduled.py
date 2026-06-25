@@ -154,7 +154,10 @@ def run_analyst_all_brands() -> dict:
     from app.services.feedback_store import auto_score_and_save
 
     brands = execute_query(
-        "SELECT DISTINCT brand_id FROM engine_scans"
+        """SELECT DISTINCT es.brand_id FROM engine_scans es
+           JOIN brands b ON es.brand_id = b.id
+           JOIN organisations o ON b.org_id = o.id
+           WHERE o.auto_scan = true"""
     )
     if not brands:
         return {"status": "no_scan_data"}

@@ -32,12 +32,13 @@ def get_org_api_key(org_id: str, provider: str) -> str:
         return os.getenv(f"{provider.upper()}_API_KEY", "")
     try:
         from app.core.database import execute_query as eq
+        from app.core.crypto import decrypt_key
         rows = eq(
             "SELECT api_keys->%s FROM organisations WHERE id = %s",
             (provider, org_id)
         )
         if rows and rows[0][0]:
-            return rows[0][0]
+            return decrypt_key(rows[0][0])
     except Exception:
         pass
     return os.getenv(f"{provider.upper()}_API_KEY", "")

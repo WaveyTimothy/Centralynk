@@ -1125,6 +1125,10 @@ def serve_llms_txt():
 
 # ── BYOK — Bring Your Own Key endpoints ──────────────────────────────────────
 
+from app.core.crypto import encrypt_key, decrypt_key
+
+_BYOK_PROVIDERS = ["groq", "gemini", "openai", "perplexity", "anthropic", "mistral", "cohere", "xai"]
+
 @app.get("/api/settings/api-keys")
 def get_api_keys(user: dict = Depends(get_current_user)):
     rows = execute_query(
@@ -1132,25 +1136,28 @@ def get_api_keys(user: dict = Depends(get_current_user)):
         (user["org_id"],)
     )
     if not rows:
-        return {"keys": {}}
+        return {p: False for p in _BYOK_PROVIDERS}
     keys = rows[0][0] or {}
-    # Never return actual key values — just show which are set
-    providers = ["groq", "gemini", "openai", "perplexity", "anthropic", "mistral", "cohere", "xai"]
-    return {p: bool(keys.get(p)) for p in providers}
+    # Decrypt to verify validity; return only bool — never expose actual key
+    result = {}
+    for p in _BYOK_PROVIDERS:
+        raw = keys.get(p)
+        result[p] = bool(raw and decrypt_key(raw))
+    return result
 
 @app.post("/api/settings/api-keys")
 def save_api_keys(body: dict, user: dict = Depends(get_current_user)):
-    """Save org API keys — encrypted at rest in JSONB."""
+    """Save org API keys — AES-256 encrypted at rest in JSONB."""
     rows = execute_query(
         "SELECT api_keys FROM organisations WHERE id = %s",
         (user["org_id"],)
     )
     existing = dict(rows[0][0] or {}) if rows else {}
 
-    # Only update keys that were provided
-    for provider in ["groq", "gemini", "openai", "perplexity", "anthropic", "mistral", "cohere", "xai"]:
+    # Encrypt each new key value before storing
+    for provider in _BYOK_PROVIDERS:
         if body.get(provider):
-            existing[provider] = body[provider]
+            existing[provider] = encrypt_key(body[provider])
 
     execute_write(
         "UPDATE organisations SET api_keys = %s::jsonb WHERE id = %s",
@@ -1171,6 +1178,41 @@ def delete_api_key(provider: str, user: dict = Depends(get_current_user)):
         (__import__("json").dumps(existing), user["org_id"])
     )
     return {"status": "removed", "provider": provider}
+
+@app.post("/api/admin/migrate-encrypt-keys")
+def migrate_encrypt_keys(credentials: HTTPAuthorizationCredentials = Security(security)):
+    """One-time migration: re-encrypt any plaintext API keys in organisations table."""
+    try:
+        import jwt as pyjwt
+        payload = pyjwt.decode(credentials.credentials, os.getenv("SECRET_KEY", "change-me"), algorithms=["HS256"])
+        if payload.get("sub") != "admin@centralynk.com":
+            raise HTTPException(status_code=403)
+    except Exception:
+        if not credentials or credentials.credentials != os.getenv("ADMIN_KEY", ""):
+            raise HTTPException(status_code=403)
+
+    rows = execute_query("SELECT id, api_keys FROM organisations WHERE api_keys IS NOT NULL AND api_keys != '{}'::jsonb")
+    migrated = 0
+    for org_id, api_keys in rows:
+        if not api_keys:
+            continue
+        updated = {}
+        changed = False
+        for provider, raw_value in api_keys.items():
+            if not raw_value:
+                continue
+            decrypted = decrypt_key(raw_value)
+            re_encrypted = encrypt_key(decrypted)
+            updated[provider] = re_encrypted
+            if re_encrypted != raw_value:
+                changed = True
+        if changed:
+            execute_write(
+                "UPDATE organisations SET api_keys = %s::jsonb WHERE id = %s",
+                (__import__("json").dumps(updated), str(org_id))
+            )
+            migrated += 1
+    return {"status": "done", "orgs_migrated": migrated}
 
 # ── Feedback stats endpoint ───────────────────────────────────────────────────
 

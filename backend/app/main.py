@@ -1479,3 +1479,32 @@ def get_scan_response(brand_id: str, scan_id: str, user: dict = Depends(get_curr
         "cited_sources": r[7] or [],
         "insight": f"AI {'mentioned' if r[3] else 'did not mention'} your brand with {r[4]} sentiment"
     }
+
+@app.patch("/api/settings/preferences")
+def update_preferences(body: dict, user: dict = Depends(get_current_user)):
+    """Update org preferences — auto_scan, auto_analyze."""
+    auto_scan = body.get("auto_scan")
+    auto_analyze = body.get("auto_analyze")
+    
+    if auto_scan is not None:
+        execute_write(
+            "UPDATE organisations SET auto_scan = %s WHERE id = %s",
+            (bool(auto_scan), user["org_id"])
+        )
+    if auto_analyze is not None:
+        execute_write(
+            "UPDATE organisations SET auto_analyze = %s WHERE id = %s",
+            (bool(auto_analyze), user["org_id"])
+        )
+    return {"status": "updated"}
+
+@app.get("/api/settings/preferences")
+def get_preferences(user: dict = Depends(get_current_user)):
+    """Get org preferences."""
+    rows = execute_query(
+        "SELECT auto_scan, auto_analyze FROM organisations WHERE id = %s",
+        (user["org_id"],)
+    )
+    if not rows:
+        return {"auto_scan": False, "auto_analyze": False}
+    return {"auto_scan": rows[0][0], "auto_analyze": rows[0][1]}

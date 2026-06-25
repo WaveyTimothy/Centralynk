@@ -278,6 +278,20 @@ def extract_cited_sources(response_text: str) -> list[str]:
     
     return clean[:10]  # max 10 sources per response
 
+def _friendly_error(raw: str) -> str:
+    """Convert a raw exception string into a short human-readable message."""
+    r = raw.lower()
+    if "429" in r or "quota" in r or "rate" in r:
+        return "quota exceeded — resets tomorrow"
+    if "401" in r or "403" in r or "invalid api key" in r or "authentication" in r:
+        return "invalid API key — check Settings"
+    if "timeout" in r or "timed out" in r:
+        return "request timed out — try again"
+    if "connection" in r or "network" in r:
+        return "network error — try again"
+    return raw[:120]
+
+
 def run_geo_scan(brand_id: str, queries: list, org_id: str = None) -> dict:
     """
     Main GEO scan — Groq + Gemini only. Real data, no simulation.
@@ -344,6 +358,8 @@ def run_geo_scan(brand_id: str, queries: list, org_id: str = None) -> dict:
     all_suggestions = []
     newly_mentioned = []
     lost_mentions = []
+    successful_engines = []
+    engine_errors: dict = {}
 
     # Build org Groq client once — reused across all queries
     import groq as groq_lib
@@ -366,6 +382,18 @@ def run_geo_scan(brand_id: str, queries: list, org_id: str = None) -> dict:
                 result = query_gemini_real(query, brand_name, gemini_key)
             else:  # Groq
                 result = query_groq_real(query, brand_name, client=org_groq_client)
+
+            # Skip errored engine responses — capture friendly message for frontend
+            if result.get("sentiment") == "error" or result.get("error"):
+                if engine not in engine_errors:
+                    # query_groq_real / query_gemini_real put the raw error in "suggestion";
+                    # query_anthropic/openai/perplexity put it in "error"
+                    raw_err = result.get("error") or result.get("suggestion", "unknown error")
+                    engine_errors[engine] = _friendly_error(str(raw_err))
+                continue
+
+            if engine not in successful_engines:
+                successful_engines.append(engine)
 
             # Trend diff
             if previous:
@@ -407,8 +435,9 @@ def run_geo_scan(brand_id: str, queries: list, org_id: str = None) -> dict:
             if result.get("brand_mentioned"):
                 total_mentioned += 1
             all_competitors.extend(result.get("competitors", []))
-            if result.get("suggestion"):
-                all_suggestions.append(result.get("suggestion"))
+            suggestion = result.get("suggestion", "")
+            if suggestion and not suggestion.startswith("Error:"):
+                all_suggestions.append(suggestion)
             total_scans += 1
 
     visibility_score = round(
@@ -421,7 +450,8 @@ def run_geo_scan(brand_id: str, queries: list, org_id: str = None) -> dict:
         "visibility_score": visibility_score,
         "total_scans":      total_scans,
         "times_mentioned":  total_mentioned,
-        "engines_used":     active_engines,
+        "engines_used":     successful_engines,
+        "engine_errors":    engine_errors,
         "real_data":        True,
         "top_competitors":  list(dict.fromkeys(all_competitors))[:5],
         "top_suggestions":  list(dict.fromkeys(all_suggestions))[:3],

@@ -127,7 +127,7 @@ def check_scan_limit(email: str) -> dict:
     if scans_used >= max_scans:
         return {"allowed": False, "reason": "Scan limit reached"}
     
-    if scans_today >= 3:
+    if scans_today >= 50:
         return {"allowed": False, "reason": "daily_limit_reached", "message": "You've reached your daily scan limit. Your limit resets at midnight. Self-host Centralynk for unlimited scans."}
     
     return {"allowed": True, "scans_remaining": max_scans - scans_used}

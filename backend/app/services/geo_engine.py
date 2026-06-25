@@ -19,7 +19,7 @@ import time
 from groq import Groq
 from app.core.database import execute_write, execute_query
 
-groq_client = Groq(api_key=os.getenv("GROQ_API_KEY", ""))
+groq_client = Groq(api_key=os.getenv("GROQ_API_KEY", ""), max_retries=1, timeout=15.0)
 
 def get_org_api_key(org_id: str, provider: str) -> str:
     """
@@ -364,7 +364,7 @@ def run_geo_scan(brand_id: str, queries: list, org_id: str = None) -> dict:
                 org_groq_key = get_org_api_key(org_id, "groq")
                 if org_groq_key != os.getenv("GROQ_API_KEY", ""):
                     import groq as groq_lib
-                    org_client = groq_lib.Groq(api_key=org_groq_key)
+                    org_client = groq_lib.Groq(api_key=org_groq_key, max_retries=1, timeout=15.0)
                     result = query_groq_real(query, brand_name, brand_context="", client=org_client)
                 else:
                     result = query_groq_real(query, brand_name, brand_context="")
@@ -561,7 +561,7 @@ def run_competitor_benchmark(brand_id: str, org_id: str) -> dict:
                 else:  # Groq
                     if groq_key != os.getenv("GROQ_API_KEY", ""):
                         import groq as groq_lib
-                        org_client = groq_lib.Groq(api_key=groq_key)
+                        org_client = groq_lib.Groq(api_key=groq_key, max_retries=1, timeout=15.0)
                         result = query_groq_real(query, comp_name, client=org_client)
                     else:
                         result = query_groq_real(query, comp_name)

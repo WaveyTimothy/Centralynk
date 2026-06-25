@@ -39,7 +39,7 @@ from groq import Groq
 from app.core.database import execute_query, execute_write
 from app.services.feedback_store import auto_score_and_save, get_few_shot_examples
 
-groq_client = Groq(api_key=os.getenv("GROQ_API_KEY", ""))
+groq_client = Groq(api_key=os.getenv("GROQ_API_KEY", ""), max_retries=1, timeout=15.0)
 
 
 # ── Output types ──────────────────────────────────────────────────────────────

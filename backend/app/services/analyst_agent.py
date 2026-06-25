@@ -33,7 +33,7 @@ from app.core.database import execute_query, execute_write
 from app.services.feedback_store import auto_score_and_save
 from app.services.geo_engine import get_org_api_key
 
-groq_client = Groq(api_key=os.getenv("GROQ_API_KEY", ""), max_retries=1, timeout=15.0)
+groq_client = Groq(api_key=os.getenv("GROQ_API_KEY", ""), max_retries=0, timeout=10.0)
 
 
 # ── Output types ─────────────────────────────────────────────────────────────
@@ -313,7 +313,7 @@ Return ONLY the JSON array. No markdown, no explanation."""
 
     org_groq_key = get_org_api_key(org_id, "groq") if org_id else ""
     _client = (
-        Groq(api_key=org_groq_key, max_retries=1, timeout=15.0)
+        Groq(api_key=org_groq_key, max_retries=0, timeout=10.0)
         if org_groq_key and org_groq_key != os.getenv("GROQ_API_KEY", "")
         else groq_client
     )

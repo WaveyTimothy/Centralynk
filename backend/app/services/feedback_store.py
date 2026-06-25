@@ -20,7 +20,7 @@ OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://host.docker.internal:11434")
 
 groq_client = Groq(
     api_key=os.getenv("GROQ_API_KEY", ""),
-    max_retries=1,
+    max_retries=0,
     timeout=10.0,
 )
 

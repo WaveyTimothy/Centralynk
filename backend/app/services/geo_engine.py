@@ -19,7 +19,7 @@ import time
 from groq import Groq
 from app.core.database import execute_write, execute_query
 
-groq_client = Groq(api_key=os.getenv("GROQ_API_KEY", ""), max_retries=1, timeout=15.0)
+groq_client = Groq(api_key=os.getenv("GROQ_API_KEY", ""), max_retries=0, timeout=10.0)
 
 def get_org_api_key(org_id: str, provider: str) -> str:
     """
@@ -362,7 +362,7 @@ def run_geo_scan(brand_id: str, queries: list, org_id: str = None) -> dict:
 
     # Build org Groq client once — reused across all queries
     import groq as groq_lib
-    org_groq_client = groq_lib.Groq(api_key=groq_key, max_retries=1, timeout=15.0) if groq_key else groq_client
+    org_groq_client = groq_lib.Groq(api_key=groq_key, max_retries=0, timeout=10.0) if groq_key else groq_client
 
     for query in queries:
         for engine in active_engines:
@@ -552,7 +552,7 @@ def run_competitor_benchmark(brand_id: str, org_id: str) -> dict:
     if not category_queries:
         # Use a Groq call to generate smart category queries
         try:
-            _gen_client = Groq(api_key=groq_key, max_retries=1, timeout=10.0) if groq_key else groq_client
+            _gen_client = Groq(api_key=groq_key, max_retries=0, timeout=10.0) if groq_key else groq_client
             gen = _gen_client.chat.completions.create(
                 model="llama-3.3-70b-versatile",
                 messages=[{"role": "user", "content": f"Generate 3 short search queries (max 6 words each) that someone would use to find companies like {brand_name} ({brand_domain}). Return only the queries, one per line, no numbering."}],
@@ -594,7 +594,7 @@ def run_competitor_benchmark(brand_id: str, org_id: str) -> dict:
 
     # Build org Groq client once — reused across all competitors and queries
     import groq as groq_lib
-    org_groq_client = groq_lib.Groq(api_key=groq_key, max_retries=1, timeout=15.0) if groq_key else groq_client
+    org_groq_client = groq_lib.Groq(api_key=groq_key, max_retries=0, timeout=10.0) if groq_key else groq_client
 
     competitors_results = []
 

@@ -921,6 +921,18 @@ def run_competitor_benchmark_endpoint(brand_id: str, user: dict = Depends(get_cu
         raise HTTPException(status_code=429, detail=limit["reason"])
 
     from app.tasks import competitor_benchmark_task
+    
+    # Prevent duplicate benchmark tasks for same brand
+    recent = execute_query(
+        """SELECT id FROM competitor_scans 
+           WHERE brand_id = %s 
+           AND scanned_at > NOW() - INTERVAL '5 minutes'
+           LIMIT 1""",
+        (brand_id,)
+    )
+    if recent:
+        return {"task_id": "duplicate", "status": "already_running", "message": "Benchmark already running — please wait"}
+    
     task = competitor_benchmark_task.delay(brand_id, user["org_id"])
     increment_scan_count(user["email"])
     return {"task_id": task.id}

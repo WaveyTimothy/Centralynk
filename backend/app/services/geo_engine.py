@@ -83,7 +83,7 @@ def query_groq_real(query: str, brand_name: str, brand_context: str = "", client
     Real Groq query — asks Groq directly, then analyzes the response.
     Groq is presented as itself, not as a simulation of another engine.
     """
-    MAX_RETRIES = 3
+    MAX_RETRIES = 1
     _client = client or groq_client
 
     for attempt in range(MAX_RETRIES):
@@ -125,7 +125,6 @@ Return ONLY valid JSON, no markdown:
             start = raw_analysis.find("{")
             end = raw_analysis.rfind("}") + 1
             if start == -1 or end == 0:
-                time.sleep(2 ** attempt)
                 continue
 
             result = json.loads(raw_analysis[start:end])
@@ -146,7 +145,6 @@ Return ONLY valid JSON, no markdown:
                     "response": "",
                     "real": True,
                 }
-            time.sleep(2 ** attempt)
 
     return {
         "engine": "Groq",
@@ -616,7 +614,10 @@ def run_competitor_benchmark(brand_id: str, org_id: str) -> dict:
                 elif engine == "Gemini":
                     result = query_gemini_real(query, comp_name, gemini_key)
                 else:  # Groq
-                    result = query_groq_real(query, comp_name, client=org_groq_client)
+                    try:
+                        result = query_groq_real(query, comp_name, client=org_groq_client)
+                    except Exception:
+                        result = {"brand_mentioned": False, "position": 0, "sentiment": "error", "competitors": [], "suggestion": "", "response": "", "engine": "Groq", "real": True}
 
                 execute_write("""
                     INSERT INTO competitor_scans

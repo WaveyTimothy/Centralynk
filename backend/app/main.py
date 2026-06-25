@@ -922,15 +922,20 @@ def run_competitor_benchmark_endpoint(brand_id: str, user: dict = Depends(get_cu
 
     from app.tasks import competitor_benchmark_task
     
-    # Prevent duplicate benchmark tasks for same brand
-    recent = execute_query(
-        """SELECT id FROM competitor_scans 
-           WHERE brand_id = %s 
-           AND scanned_at > NOW() - INTERVAL '5 minutes'
-           LIMIT 1""",
+    # Prevent duplicate benchmark tasks — only block if ALL current competitors were scanned recently
+    comp_count = execute_query(
+        "SELECT COUNT(*) FROM tracked_competitors WHERE brand_id = %s",
         (brand_id,)
     )
-    if recent:
+    recent_count = execute_query(
+        """SELECT COUNT(DISTINCT competitor_id) FROM competitor_scans 
+           WHERE brand_id = %s 
+           AND scanned_at > NOW() - INTERVAL '5 minutes'""",
+        (brand_id,)
+    )
+    total_comps = int(comp_count[0][0]) if comp_count else 0
+    recent_comps = int(recent_count[0][0]) if recent_count else 0
+    if total_comps > 0 and recent_comps >= total_comps:
         return {"task_id": "duplicate", "status": "already_running", "message": "Benchmark already running — please wait"}
     
     task = competitor_benchmark_task.delay(brand_id, user["org_id"])

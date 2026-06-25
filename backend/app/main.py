@@ -301,6 +301,13 @@ def get_scans(
     brand_id: str,
     user: dict = Depends(get_current_user)
 ):
+    owner = execute_query(
+        "SELECT id FROM brands WHERE id = %s AND org_id = %s",
+        (brand_id, user["org_id"])
+    )
+    if not owner:
+        raise HTTPException(status_code=404, detail="Brand not found")
+
     rows = execute_query("""
         SELECT id, engine_name, query, brand_mentioned,
                sentiment, position, scanned_at, lessons_learned
@@ -320,6 +327,30 @@ def get_scans(
             "position": r[5],
             "scanned_at": str(r[6]),
             "lessons": r[7]
+        }
+        for r in rows
+    ]
+
+@app.get("/api/scans")
+def get_all_scans(user: dict = Depends(get_current_user)):
+    rows = execute_query("""
+        SELECT es.id, b.name as brand_name, es.engine_name, es.query,
+               es.brand_mentioned, es.sentiment, es.scanned_at
+        FROM engine_scans es
+        JOIN brands b ON es.brand_id = b.id
+        WHERE b.org_id = %s
+        ORDER BY es.scanned_at DESC
+        LIMIT 100
+    """, (user["org_id"],))
+    return [
+        {
+            "id": str(r[0]),
+            "brand_name": r[1],
+            "engine": r[2],
+            "query": r[3],
+            "mentioned": r[4],
+            "sentiment": r[5],
+            "scanned_at": str(r[6])
         }
         for r in rows
     ]
@@ -1419,8 +1450,15 @@ def delete_recommendation(brand_id: str, rec_id: str, user: dict = Depends(get_c
 @app.get("/api/brands/{brand_id}/scans/{scan_id}/response")
 def get_scan_response(brand_id: str, scan_id: str, user: dict = Depends(get_current_user)):
     """Get the full AI response for a specific scan — shows how AI mentioned the brand."""
+    owner = execute_query(
+        "SELECT id FROM brands WHERE id = %s AND org_id = %s",
+        (brand_id, user["org_id"])
+    )
+    if not owner:
+        raise HTTPException(status_code=404, detail="Brand not found")
+
     rows = execute_query("""
-        SELECT engine_name, query, response, brand_mentioned, 
+        SELECT engine_name, query, response, brand_mentioned,
                sentiment, position, scanned_at, cited_sources
         FROM engine_scans
         WHERE id = %s AND brand_id = %s

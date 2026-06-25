@@ -552,11 +552,19 @@ def run_competitor_benchmark(brand_id: str, org_id: str) -> dict:
         and brand_domain_lower not in q.lower()
     ]
     if not category_queries:
-        category_queries = [
-            f"best {brand_name} alternatives",
-            f"tools similar to {brand_name}",
-            f"top tools in {brand_name} category",
-        ]
+        # Use a Groq call to generate smart category queries
+        try:
+            _gen_client = Groq(api_key=groq_key, max_retries=1, timeout=10.0) if groq_key else groq_client
+            gen = _gen_client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=[{"role": "user", "content": f"Generate 3 short search queries (max 6 words each) that someone would use to find companies like {brand_name} ({brand_domain}). Return only the queries, one per line, no numbering."}],
+                max_tokens=100,
+                temperature=0.3,
+            )
+            raw = gen.choices[0].message.content.strip()
+            category_queries = [q.strip() for q in raw.split("\n") if q.strip()][:3]
+        except Exception:
+            category_queries = [f"best {brand_name} competitors", f"companies like {brand_name}"]
     queries = category_queries[:5]
 
     # Same engine-selection logic as run_geo_scan: fetch each key once,

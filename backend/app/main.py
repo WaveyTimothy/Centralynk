@@ -167,17 +167,17 @@ def create_brand(
 ):
     try:
         execute_write("""
-            INSERT INTO brands (name, domain, description, keywords)
-            VALUES (%s, %s, %s, %s)
-            ON CONFLICT (domain) DO UPDATE SET
+            INSERT INTO brands (name, domain, description, keywords, org_id)
+            VALUES (%s, %s, %s, %s, %s)
+            ON CONFLICT (domain, org_id) DO UPDATE SET
                 name = EXCLUDED.name,
                 description = EXCLUDED.description,
                 keywords = EXCLUDED.keywords
-        """, (brand.name, brand.domain, brand.description, brand.keywords))
+        """, (brand.name, brand.domain, brand.description, brand.keywords, user["org_id"]))
 
         rows = execute_query(
-            "SELECT id, name, domain FROM brands WHERE domain = %s",
-            (brand.domain,)
+            "SELECT id, name, domain FROM brands WHERE domain = %s AND org_id = %s",
+            (brand.domain, user["org_id"])
         )
         return {"id": str(rows[0][0]), "name": rows[0][1], "domain": rows[0][2]}
     except Exception as e:
@@ -186,7 +186,8 @@ def create_brand(
 @app.get("/api/brands")
 def get_brands(user: dict = Depends(get_current_user)):
     rows = execute_query(
-        "SELECT id, name, domain, created_at FROM brands ORDER BY created_at DESC"
+        "SELECT id, name, domain, created_at FROM brands WHERE org_id = %s ORDER BY created_at DESC",
+        (user["org_id"],)
     )
     return [
         {"id": str(r[0]), "name": r[1], "domain": r[2], "created_at": str(r[3])}

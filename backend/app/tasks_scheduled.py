@@ -162,7 +162,11 @@ def run_analyst_all_brands() -> dict:
     results = []
     for (brand_id,) in brands:
         try:
-            report = run_analyst_agent(str(brand_id))
+            org_rows = execute_query(
+                "SELECT org_id FROM brands WHERE id = %s", (str(brand_id),)
+            )
+            org_id = str(org_rows[0][0]) if org_rows and org_rows[0][0] else None
+            report = run_analyst_agent(str(brand_id), org_id=org_id)
 
             # Auto-score every recommendation — feeds the self-learning loop
             scores = []

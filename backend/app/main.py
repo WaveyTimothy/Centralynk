@@ -298,7 +298,7 @@ from app.services.feedback_store import get_feedback_stats, get_pending_human_re
 @app.post("/api/brands/{brand_id}/analyze")
 def analyze_brand(brand_id: str, user: dict = Depends(get_current_user)):
     try:
-        report = run_analyst_agent(brand_id)
+        report = run_analyst_agent(brand_id, org_id=user["org_id"])
         return report.model_dump()
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))

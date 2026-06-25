@@ -31,6 +31,7 @@ from pydantic import BaseModel, Field
 from groq import Groq
 from app.core.database import execute_query, execute_write
 from app.services.feedback_store import auto_score_and_save
+from app.services.geo_engine import get_org_api_key
 
 groq_client = Groq(api_key=os.getenv("GROQ_API_KEY", ""), max_retries=1, timeout=15.0)
 
@@ -159,7 +160,7 @@ def _fetch_brand_scan_summary(brand_id: str) -> dict:
         LIMIT 5
     """, (brand_id,))
 
-    return {
+    summary = {
         "total_scans":       int(total or 0),
         "total_mentioned":   int(mentioned or 0),
         "avg_position":      float(avg_pos or 0),
@@ -181,6 +182,8 @@ def _fetch_brand_scan_summary(brand_id: str) -> dict:
         "trending_up":       recent_rate > older_rate,
         "missed_queries":    [(r[0], int(r[1])) for r in missed_rows],
     }
+    print(f"[DEBUG] summary: {summary}", flush=True)
+    return summary
 
 
 def _fetch_brand_info(brand_id: str) -> dict:
@@ -236,6 +239,7 @@ def _run_analyst_prompt(
     brand_info: dict,
     summary: dict,
     few_shot: str,
+    org_id: str = None,
 ) -> list[dict]:
     """
     Single Groq call. Returns list of raw recommendation dicts.
@@ -307,16 +311,24 @@ Return a JSON array of 3–5 recommendations. Each must be:
 Prioritize: critical issues first, specific over vague, evidence-backed over generic.
 Return ONLY the JSON array. No markdown, no explanation."""
 
+    org_groq_key = get_org_api_key(org_id, "groq") if org_id else ""
+    _client = (
+        Groq(api_key=org_groq_key, max_retries=1, timeout=15.0)
+        if org_groq_key and org_groq_key != os.getenv("GROQ_API_KEY", "")
+        else groq_client
+    )
+
     MAX_RETRIES = 3
     for attempt in range(MAX_RETRIES):
         try:
-            completion = groq_client.chat.completions.create(
+            completion = _client.chat.completions.create(
                 model="llama-3.3-70b-versatile",
                 messages=[{"role": "user", "content": prompt}],
-                max_tokens=600,
+                max_tokens=1200,
                 temperature=0.2,
             )
             raw = completion.choices[0].message.content.strip()
+            print(f"[DEBUG] groq raw response: {raw}", flush=True)
             start = raw.find("[")
             end = raw.rfind("]") + 1
             if start == -1 or end == 0:
@@ -388,7 +400,7 @@ def _ensure_analyst_reports_table() -> None:
 
 # ── Public API ────────────────────────────────────────────────────────────────
 
-def run_analyst_agent(brand_id: str) -> AnalystReport:
+def run_analyst_agent(brand_id: str, org_id: str = None) -> AnalystReport:
     """
     Main entry point. Call this after a GEO scan completes.
 
@@ -413,7 +425,7 @@ def run_analyst_agent(brand_id: str) -> AnalystReport:
     few_shot = _load_few_shot_examples(limit=3)
 
     # Run the agent
-    raw_recs = _run_analyst_prompt(brand_info, summary, few_shot)
+    raw_recs = _run_analyst_prompt(brand_info, summary, few_shot, org_id=org_id)
 
     # Parse into typed objects
     recommendations = []

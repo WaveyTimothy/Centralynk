@@ -543,6 +543,22 @@ def run_competitor_benchmark(brand_id: str, org_id: str) -> dict:
 
     queries = [r[0] for r in query_rows]
 
+    # Filter out brand-specific queries for fair competitor comparison
+    brand_name_lower = brand_name.lower()
+    brand_domain_lower = brand_domain.lower().replace("https://", "").replace("http://", "").split("/")[0]
+    category_queries = [
+        q for q in queries
+        if brand_name_lower not in q.lower()
+        and brand_domain_lower not in q.lower()
+    ]
+    if not category_queries:
+        category_queries = [
+            f"best {brand_name} alternatives",
+            f"tools similar to {brand_name}",
+            f"top tools in {brand_name} category",
+        ]
+    queries = category_queries[:5]
+
     # Same engine-selection logic as run_geo_scan: fetch each key once,
     # use the same variable for the gate check and the dispatch call.
     groq_key       = get_org_api_key(org_id, "groq")      if org_id else ""

@@ -114,7 +114,7 @@ Return ONLY valid JSON, no markdown:
     "suggestion": "one specific improvement tip to get mentioned"
 }}"""
 
-            analysis = groq_client.chat.completions.create(
+            analysis = _client.chat.completions.create(
                 model="llama-3.3-70b-versatile",
                 messages=[{"role": "user", "content": analysis_prompt}],
                 max_tokens=256,
@@ -155,14 +155,14 @@ Return ONLY valid JSON, no markdown:
     }
 
 
-def query_gemini_real(query: str, brand_name: str) -> dict:
+def query_gemini_real(query: str, brand_name: str, api_key: str = "") -> dict:
     """
     Real Gemini query via google-generativeai.
     Two-step: query → analyze response for brand visibility.
     """
     try:
         import google.generativeai as genai
-        genai.configure(api_key=os.getenv("GEMINI_API_KEY", ""))
+        genai.configure(api_key=api_key or os.getenv("GEMINI_API_KEY", ""))
         model = genai.GenerativeModel("gemini-2.0-flash")
 
         # Step 1: real Gemini response
@@ -345,6 +345,10 @@ def run_geo_scan(brand_id: str, queries: list, org_id: str = None) -> dict:
     newly_mentioned = []
     lost_mentions = []
 
+    # Build org Groq client once — reused across all queries
+    import groq as groq_lib
+    org_groq_client = groq_lib.Groq(api_key=groq_key, max_retries=1, timeout=15.0) if groq_key else groq_client
+
     for query in queries:
         for engine in active_engines:
 
@@ -353,21 +357,15 @@ def run_geo_scan(brand_id: str, queries: list, org_id: str = None) -> dict:
 
             # Real engine call
             if engine == "Claude":
-                result = query_anthropic_real(query, brand_name, brand_context, get_org_api_key(org_id, "anthropic"))
+                result = query_anthropic_real(query, brand_name, brand_context, anthropic_key)
             elif engine == "ChatGPT":
-                result = query_openai_real(query, brand_name, brand_context, get_org_api_key(org_id, "openai"))
+                result = query_openai_real(query, brand_name, brand_context, openai_key)
             elif engine == "Perplexity":
-                result = query_perplexity_real(query, brand_name, brand_context, get_org_api_key(org_id, "perplexity"))
+                result = query_perplexity_real(query, brand_name, brand_context, perplexity_key)
             elif engine == "Gemini":
-                result = query_gemini_real(query, brand_name)
-            else:  # Groq — use org key if available (BYOK)
-                org_groq_key = get_org_api_key(org_id, "groq")
-                if org_groq_key != os.getenv("GROQ_API_KEY", ""):
-                    import groq as groq_lib
-                    org_client = groq_lib.Groq(api_key=org_groq_key, max_retries=1, timeout=15.0)
-                    result = query_groq_real(query, brand_name, brand_context="", client=org_client)
-                else:
-                    result = query_groq_real(query, brand_name, brand_context="")
+                result = query_gemini_real(query, brand_name, gemini_key)
+            else:  # Groq
+                result = query_groq_real(query, brand_name, client=org_groq_client)
 
             # Trend diff
             if previous:
@@ -541,6 +539,10 @@ def run_competitor_benchmark(brand_id: str, org_id: str) -> dict:
     brand_mentioned_count = int(brand_vis[0][1] or 0)
     brand_score = round(brand_mentioned_count / max(brand_total, 1) * 100, 1)
 
+    # Build org Groq client once — reused across all competitors and queries
+    import groq as groq_lib
+    org_groq_client = groq_lib.Groq(api_key=groq_key, max_retries=1, timeout=15.0) if groq_key else groq_client
+
     competitors_results = []
 
     for comp_id, comp_name, comp_domain in comp_rows:
@@ -557,14 +559,9 @@ def run_competitor_benchmark(brand_id: str, org_id: str) -> dict:
                 elif engine == "Perplexity":
                     result = query_perplexity_real(query, comp_name, "", perplexity_key)
                 elif engine == "Gemini":
-                    result = query_gemini_real(query, comp_name)
+                    result = query_gemini_real(query, comp_name, gemini_key)
                 else:  # Groq
-                    if groq_key != os.getenv("GROQ_API_KEY", ""):
-                        import groq as groq_lib
-                        org_client = groq_lib.Groq(api_key=groq_key, max_retries=1, timeout=15.0)
-                        result = query_groq_real(query, comp_name, client=org_client)
-                    else:
-                        result = query_groq_real(query, comp_name)
+                    result = query_groq_real(query, comp_name, client=org_groq_client)
 
                 execute_write("""
                     INSERT INTO competitor_scans

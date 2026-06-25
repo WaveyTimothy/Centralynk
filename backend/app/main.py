@@ -194,6 +194,17 @@ def get_brands(user: dict = Depends(get_current_user)):
         for r in rows
     ]
 
+@app.delete("/api/brands/{brand_id}")
+def delete_brand(brand_id: str, user: dict = Depends(get_current_user)):
+    rows = execute_query(
+        "SELECT id FROM brands WHERE id = %s AND org_id = %s",
+        (brand_id, user["org_id"])
+    )
+    if not rows:
+        raise HTTPException(status_code=404, detail="Brand not found")
+    execute_write("DELETE FROM brands WHERE id = %s", (brand_id,))
+    return {"status": "deleted", "brand_id": brand_id}
+
 @app.post("/api/scan/sync")
 def scan_brand_sync(
     request: ScanRequest,

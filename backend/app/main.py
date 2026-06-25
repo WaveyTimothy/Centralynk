@@ -62,17 +62,36 @@ def join_waitlist_endpoint(request: dict):
 @app.post("/api/access/validate")
 def validate_code_endpoint(request: dict):
     """Validate access code and return session token"""
+    import uuid as _uuid
+    import re as _re
+    BETA_ORG_ID = "b0000000-0000-0000-0000-000000000001"
+
     code = request.get("code", "")
     email = request.get("email", "")
-    
+
     result = validate_access_code(code, email)
     if not result["valid"]:
         raise HTTPException(status_code=403, detail=result["reason"])
-    
-    # Generate JWT token (24h expiry)
+
+    # Ensure every user has their own private org
+    user_rows = execute_query("SELECT org_id FROM users WHERE email = %s", (email,))
+    current_org = str(user_rows[0][0]) if user_rows and user_rows[0][0] else None
+
+    if not current_org or current_org == BETA_ORG_ID:
+        new_org_id = str(_uuid.uuid4())
+        slug = _re.sub(r"[^a-z0-9]", "-", email.split("@")[0].lower())[:50]
+        execute_write(
+            "INSERT INTO organisations (id, name, slug, plan) VALUES (%s, %s, %s, 'free')",
+            (new_org_id, email, slug),
+        )
+        execute_write(
+            "UPDATE users SET org_id = %s WHERE email = %s",
+            (new_org_id, email),
+        )
+
     from app.core.auth import create_token
     token = create_token(email, code.upper())
-    
+
     return {
         "valid": True,
         "token": token,

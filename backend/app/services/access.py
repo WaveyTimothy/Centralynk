@@ -63,7 +63,9 @@ def generate_access_code(
     """, (code, email, max_scans, notes))
     return code
 
-def validate_access_code(code: str, email: str) -> dict:
+BETA_ORG_ID = "b0000000-0000-0000-0000-000000000001"
+
+def validate_access_code(code: str, email: str, org_id: str = None) -> dict:
     """Validate access code and register user"""
     rows = execute_query("""
         SELECT code, is_active, max_scans, scans_used, email
@@ -83,11 +85,14 @@ def validate_access_code(code: str, email: str) -> dict:
         return {"valid": False, "reason": "Scan limit reached for this code"}
     
     # Register or update user
+    resolved_org_id = org_id or BETA_ORG_ID
     execute_write("""
-        INSERT INTO users (email, access_code)
-        VALUES (%s, %s)
-        ON CONFLICT (email) DO UPDATE SET last_seen = NOW()
-    """, (email, code.upper()))
+        INSERT INTO users (email, access_code, org_id)
+        VALUES (%s, %s, %s)
+        ON CONFLICT (email) DO UPDATE SET
+            last_seen = NOW(),
+            org_id = COALESCE(users.org_id, EXCLUDED.org_id)
+    """, (email, code.upper(), resolved_org_id))
     
     # Mark code as used
     execute_write("""

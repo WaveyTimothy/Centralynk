@@ -51,7 +51,7 @@ def get_current_user(
                u.org_id, u.role, o.name as org_name, o.slug, o.plan
         FROM users u
         JOIN access_codes ac ON u.access_code = ac.code
-        JOIN organisations o ON u.org_id = o.id
+        LEFT JOIN organisations o ON u.org_id = o.id
         WHERE u.email = %s AND u.access_code = %s
     """, (email, code.upper()))
 
@@ -59,6 +59,10 @@ def get_current_user(
         raise HTTPException(status_code=401, detail="Invalid or expired session")
 
     email, is_active, max_scans, scans_used, org_id, role, org_name, slug, plan = rows[0]
+    org_id   = str(org_id) if org_id   else "b0000000-0000-0000-0000-000000000001"
+    org_name = org_name    if org_name else email
+    slug     = slug        if slug     else "personal"
+    plan     = plan        if plan     else "free"
 
     if not is_active:
         raise HTTPException(status_code=403, detail="Access revoked")

@@ -23,13 +23,12 @@ groq_client = Groq(api_key=os.getenv("GROQ_API_KEY", ""), max_retries=0, timeout
 
 def get_org_api_key(org_id: str, provider: str) -> str:
     """
-    BYOK: Check if org has their own API key for this provider.
-    Falls back to system key if not set.
-    Free tier uses system Groq key.
-    Pro/Enterprise can bring their own.
+    BYOK: Return org's own API key for this provider.
+    Never falls back to system key — pure BYOK.
+    Returns empty string if no key configured.
     """
     if not org_id:
-        return os.getenv(f"{provider.upper()}_API_KEY", "")
+        return ""
     try:
         from app.core.database import execute_query as eq
         from app.core.crypto import decrypt_key
@@ -41,7 +40,7 @@ def get_org_api_key(org_id: str, provider: str) -> str:
             return decrypt_key(rows[0][0])
     except Exception:
         pass
-    return os.getenv(f"{provider.upper()}_API_KEY", "")
+    return ""
 
 
 

@@ -84,8 +84,8 @@ def query_groq_real(query: str, brand_name: str, brand_context: str = "", client
     """
     import httpx as _httpx
     
-    # Get API key
-    _api_key = api_key or os.getenv("GROQ_API_KEY", "")
+    # Get API key — NEVER fall back to system key, BYOK only
+    _api_key = api_key
     if not _api_key and client:
         try:
             _api_key = client.api_key
@@ -197,7 +197,7 @@ def query_gemini_real(query: str, brand_name: str, api_key: str = "") -> dict:
     Real Gemini query via httpx — bypasses SDK timeout issues.
     """
     import httpx as _httpx
-    _api_key = api_key or os.getenv("GEMINI_API_KEY", "")
+    _api_key = api_key
     if not _api_key:
         return {"engine": "Gemini", "brand_mentioned": False, "sentiment": "error", "competitors": [], "suggestion": "", "response": "", "real": True}
     try:
@@ -399,7 +399,7 @@ def run_geo_scan(brand_id: str, queries: list, org_id: str = None) -> dict:
 
     # Build org Groq client once — reused across all queries
     import groq as groq_lib
-    org_groq_client = groq_lib.Groq(api_key=groq_key, max_retries=0, timeout=10.0) if groq_key else groq_client
+    org_groq_client = groq_lib.Groq(api_key=groq_key, max_retries=0, timeout=10.0) if groq_key else None
 
     for query in queries:
         for engine in active_engines:
@@ -589,7 +589,7 @@ def run_competitor_benchmark(brand_id: str, org_id: str) -> dict:
     if not category_queries:
         # Use a Groq call to generate smart category queries
         try:
-            _gen_client = Groq(api_key=groq_key, max_retries=0, timeout=10.0) if groq_key else groq_client
+            _gen_client = Groq(api_key=groq_key, max_retries=0, timeout=10.0) if groq_key else None
             gen = _gen_client.chat.completions.create(
                 model="llama-3.3-70b-versatile",
                 messages=[{"role": "user", "content": f"Generate 3 short search queries (max 6 words each) that someone would use to find companies like {brand_name} ({brand_domain}). Return only the queries, one per line, no numbering."}],
@@ -631,7 +631,7 @@ def run_competitor_benchmark(brand_id: str, org_id: str) -> dict:
 
     # Build org Groq client once — reused across all competitors and queries
     import groq as groq_lib
-    org_groq_client = groq_lib.Groq(api_key=groq_key, max_retries=0, timeout=10.0) if groq_key else groq_client
+    org_groq_client = groq_lib.Groq(api_key=groq_key, max_retries=0, timeout=10.0) if groq_key else None
 
     competitors_results = []
 

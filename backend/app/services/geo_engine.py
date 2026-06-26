@@ -78,29 +78,63 @@ def get_embedding(text: str) -> list:
         return []
 
 
-def query_groq_real(query: str, brand_name: str, brand_context: str = "", client=None) -> dict:
+def query_groq_real(query: str, brand_name: str, brand_context: str = "", client=None, api_key: str = "") -> dict:
     """
-    Real Groq query — asks Groq directly, then analyzes the response.
-    Groq is presented as itself, not as a simulation of another engine.
+    Real Groq query using httpx directly — bypasses SDK timeout issues.
     """
-    MAX_RETRIES = 1
-    _client = client or groq_client
-
-    for attempt in range(MAX_RETRIES):
+    import httpx as _httpx
+    
+    # Get API key
+    _api_key = api_key or os.getenv("GROQ_API_KEY", "")
+    if not _api_key and client:
         try:
-            # Step 1: real Groq response to the query
-            # Inject brand context to prevent domain confusion (GEO = geography vs GEO = generative engine optimization)
-            contextualized_query = query  # Send raw query — no brand context injection
-            completion = _client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
-                messages=[{"role": "user", "content": contextualized_query}],
-                max_tokens=512,
-                temperature=0.3,
-            )
-            raw_response = completion.choices[0].message.content.strip()
-
-            # Step 2: analyze the response for brand visibility
-            analysis_prompt = f"""Analyze this AI response for brand visibility.
+            _api_key = client.api_key
+        except Exception:
+            pass
+    
+    default_error = {
+        "engine": "Groq",
+        "brand_mentioned": False,
+        "position": 0,
+        "sentiment": "error",
+        "competitors": [],
+        "suggestion": "",
+        "response": "",
+        "real": True,
+    }
+    
+    if not _api_key:
+        return default_error
+    
+    headers = {
+        "Authorization": f"Bearer {_api_key}",
+        "Content-Type": "application/json"
+    }
+    
+    try:
+        # Step 1: Get Groq response
+        r1 = _httpx.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers=headers,
+            json={
+                "model": "llama-3.3-70b-versatile",
+                "messages": [{"role": "user", "content": query}],
+                "max_tokens": 512,
+                "temperature": 0.3,
+            },
+            timeout=10.0
+        )
+        if r1.status_code != 200:
+            err = r1.json().get("error", {})
+            msg = err.get("message", f"HTTP {r1.status_code}")
+            result = default_error.copy()
+            result["suggestion"] = f"Error: {msg[:100]}"
+            return result
+            
+        raw_response = r1.json()["choices"][0]["message"]["content"].strip()
+        
+        # Step 2: Analyze for brand visibility
+        analysis_prompt = f"""Analyze this AI response for brand visibility.
 
 Query: "{query}"
 Brand to track: "{brand_name}"
@@ -115,36 +149,40 @@ Return ONLY valid JSON, no markdown:
     "suggestion": "one specific improvement tip to get mentioned"
 }}"""
 
-            analysis = _client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
-                messages=[{"role": "user", "content": analysis_prompt}],
-                max_tokens=256,
-                temperature=0.1,
-            )
-            raw_analysis = analysis.choices[0].message.content.strip()
-            start = raw_analysis.find("{")
-            end = raw_analysis.rfind("}") + 1
-            if start == -1 or end == 0:
-                continue
-
-            result = json.loads(raw_analysis[start:end])
+        r2 = _httpx.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers=headers,
+            json={
+                "model": "llama-3.3-70b-versatile",
+                "messages": [{"role": "user", "content": analysis_prompt}],
+                "max_tokens": 256,
+                "temperature": 0.1,
+            },
+            timeout=10.0
+        )
+        if r2.status_code != 200:
+            result = default_error.copy()
             result["response"] = raw_response[:500]
-            result["engine"] = "Groq"
-            result["real"] = True
             return result
-
-        except Exception as e:
-            if attempt == MAX_RETRIES - 1:
-                return {
-                    "engine": "Groq",
-                    "brand_mentioned": False,
-                    "position": 0,
-                    "sentiment": "error",
-                    "competitors": [],
-                    "suggestion": f"Error: {str(e)}",
-                    "response": "",
-                    "real": True,
-                }
+            
+        raw_analysis = r2.json()["choices"][0]["message"]["content"].strip()
+        start = raw_analysis.find("{")
+        end = raw_analysis.rfind("}") + 1
+        if start == -1 or end == 0:
+            result = default_error.copy()
+            result["response"] = raw_response[:500]
+            return result
+            
+        result = json.loads(raw_analysis[start:end])
+        result["response"] = raw_response[:500]
+        result["engine"] = "Groq"
+        result["real"] = True
+        return result
+        
+    except Exception as e:
+        result = default_error.copy()
+        result["suggestion"] = f"Error: {str(e)[:100]}"
+        return result
 
     return {
         "engine": "Groq",
@@ -156,23 +194,22 @@ Return ONLY valid JSON, no markdown:
 
 def query_gemini_real(query: str, brand_name: str, api_key: str = "") -> dict:
     """
-    Real Gemini query via google-generativeai.
-    Two-step: query → analyze response for brand visibility.
+    Real Gemini query via httpx — bypasses SDK timeout issues.
     """
+    import httpx as _httpx
+    _api_key = api_key or os.getenv("GEMINI_API_KEY", "")
+    if not _api_key:
+        return {"engine": "Gemini", "brand_mentioned": False, "sentiment": "error", "competitors": [], "suggestion": "", "response": "", "real": True}
     try:
-        import google.generativeai as genai
-        genai.configure(api_key=api_key or os.getenv("GEMINI_API_KEY", ""))
-        model = genai.GenerativeModel("gemini-2.0-flash")
-
-        # Step 1: real Gemini response
-        response = model.generate_content(
-            query,
-            generation_config=genai.types.GenerationConfig(
-                max_output_tokens=512,
-                temperature=0.3,
-            )
+        r = _httpx.post(
+            f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={_api_key}",
+            json={"contents": [{"parts": [{"text": query}]}], "generationConfig": {"maxOutputTokens": 512, "temperature": 0.3}},
+            timeout=10.0
         )
-        raw_response = response.text
+        if r.status_code != 200:
+            err = r.json().get("error", {}).get("message", f"HTTP {r.status_code}")
+            return {"engine": "Gemini", "brand_mentioned": False, "sentiment": "error", "competitors": [], "suggestion": f"Error: {err[:100]}", "response": "", "real": True}
+        raw_response = r.json()["candidates"][0]["content"]["parts"][0]["text"]
 
         # Step 2: analyze with Groq (cheaper + faster for analysis)
         analysis_prompt = f"""Analyze this AI response for brand visibility.

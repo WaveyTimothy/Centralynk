@@ -501,37 +501,55 @@ def run_geo_scan(brand_id: str, queries: list, org_id: str = None) -> dict:
     }
 
 
-def _analyze_response(raw_response: str, brand_name: str, engine: str, query: str) -> dict:
-    """Score an AI engine's raw response for brand visibility using Groq as the analyzer."""
-    analysis_prompt = f"""Analyze this AI response for brand visibility.
-
-Query: "{query}"
-Brand to track: "{brand_name}"
-AI Response: "{raw_response[:1000]}"
-
-Return ONLY valid JSON, no markdown:
-{{
-    "brand_mentioned": true or false,
-    "position": 0,
-    "sentiment": "positive|neutral|negative|not_mentioned",
-    "competitors": ["name1", "name2"],
-    "suggestion": "one specific improvement tip"
-}}"""
-    try:
-        analysis = groq_client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=[{"role": "user", "content": analysis_prompt}],
-            max_tokens=256,
-            temperature=0.1,
-        )
-        raw = analysis.choices[0].message.content.strip()
-        start = raw.find("{")
-        end = raw.rfind("}") + 1
-        if start != -1 and end != 0:
-            result = json.loads(raw[start:end])
-            result["response"] = raw_response[:500]
-            result["engine"] = engine
-            result["real"] = True
+def _analyze_response(raw_response: str, brand_name: str, engine: str, query: str, groq_api_key: str = "") -> dict:
+    """
+    Score an AI engine response for brand visibility.
+    Uses simple string matching — no external API calls, no system key usage.
+    """
+    import re
+    response_lower = raw_response.lower()
+    
+    # Normalize brand name for matching (handle accents, special chars)
+    brand_lower = brand_name.lower()
+    brand_simple = re.sub(r'[^a-z0-9\s]', '', brand_lower).strip()
+    
+    # Check if brand is mentioned
+    brand_mentioned = (
+        brand_lower in response_lower or
+        brand_simple in response_lower or
+        any(word in response_lower for word in brand_simple.split() if len(word) > 3)
+    )
+    
+    # Simple sentiment
+    sentiment = "not_mentioned"
+    if brand_mentioned:
+        positive_words = ["best", "top", "excellent", "premium", "recommended", "popular", "leading"]
+        negative_words = ["worst", "avoid", "poor", "bad", "inferior"]
+        if any(w in response_lower for w in positive_words):
+            sentiment = "positive"
+        elif any(w in response_lower for w in negative_words):
+            sentiment = "negative"
+        else:
+            sentiment = "neutral"
+    
+    # Find position (which paragraph/sentence mentions brand)
+    position = 0
+    if brand_mentioned:
+        sentences = raw_response.split('.')
+        for i, sentence in enumerate(sentences):
+            if brand_lower in sentence.lower() or brand_simple in sentence.lower():
+                position = i + 1
+                break
+    
+    return {
+        "brand_mentioned": brand_mentioned,
+        "position": position,
+        "sentiment": sentiment,
+        "competitors": [],
+        "suggestion": "",
+        "response": raw_response[:500],
+        "engine": engine,
+        "real": True
             return result
     except Exception:
         pass

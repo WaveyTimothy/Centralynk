@@ -416,7 +416,7 @@ def run_geo_scan(brand_id: str, queries: list, org_id: str = None) -> dict:
             elif engine == "Gemini":
                 result = query_gemini_real(query, brand_name, gemini_key)
             else:  # Groq
-                result = query_groq_real(query, brand_name, client=org_groq_client)
+                result = query_groq_real(query, brand_name, client=org_groq_client, api_key=groq_key)
 
             # Skip errored engine responses — capture friendly message for frontend
             if result.get("sentiment") == "error" or result.get("error"):
@@ -657,7 +657,7 @@ def run_competitor_benchmark(brand_id: str, org_id: str) -> dict:
                     result = query_gemini_real(query, comp_name, gemini_key)
                 else:  # Groq
                     try:
-                        result = query_groq_real(query, comp_name, client=org_groq_client)
+                        result = query_groq_real(query, comp_name, client=org_groq_client, api_key=groq_key)
                     except Exception:
                         result = {"brand_mentioned": False, "position": 0, "sentiment": "error", "competitors": [], "suggestion": "", "response": "", "engine": "Groq", "real": True}
 

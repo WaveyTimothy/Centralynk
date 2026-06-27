@@ -549,18 +549,6 @@ def _analyze_response(raw_response: str, brand_name: str, engine: str, query: st
         "suggestion": "",
         "response": raw_response[:500],
         "engine": engine,
-        "real": True
-            return result
-    except Exception:
-        pass
-    return {
-        "engine": engine,
-        "brand_mentioned": False,
-        "position": 0,
-        "sentiment": "error",
-        "competitors": [],
-        "suggestion": "",
-        "response": raw_response[:500],
         "real": True,
     }
 

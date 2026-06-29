@@ -131,52 +131,9 @@ def query_groq_real(query: str, brand_name: str, brand_context: str = "", client
             return result
             
         raw_response = r1.json()["choices"][0]["message"]["content"].strip()
-        
-        # Step 2: Analyze for brand visibility
-        analysis_prompt = f"""Analyze this AI response for brand visibility.
 
-Query: "{query}"
-Brand to track: "{brand_name}"
-AI Response: "{raw_response[:1000]}"
-
-Return ONLY valid JSON, no markdown:
-{{
-    "brand_mentioned": true or false,
-    "position": 0,
-    "sentiment": "positive|neutral|negative|not_mentioned",
-    "competitors": ["name1", "name2"],
-    "suggestion": "one specific improvement tip to get mentioned"
-}}"""
-
-        r2 = _httpx.post(
-            "https://api.groq.com/openai/v1/chat/completions",
-            headers=headers,
-            json={
-                "model": "llama-3.3-70b-versatile",
-                "messages": [{"role": "user", "content": analysis_prompt}],
-                "max_tokens": 256,
-                "temperature": 0.1,
-            },
-            timeout=10.0
-        )
-        if r2.status_code != 200:
-            result = default_error.copy()
-            result["response"] = raw_response[:500]
-            return result
-            
-        raw_analysis = r2.json()["choices"][0]["message"]["content"].strip()
-        start = raw_analysis.find("{")
-        end = raw_analysis.rfind("}") + 1
-        if start == -1 or end == 0:
-            result = default_error.copy()
-            result["response"] = raw_response[:500]
-            return result
-            
-        result = json.loads(raw_analysis[start:end])
-        result["response"] = raw_response[:500]
-        result["engine"] = "Groq"
-        result["real"] = True
-        return result
+        # Step 2: Analyze for brand visibility (local — no extra API call)
+        return _analyze_response(raw_response, brand_name, "Groq", query)
         
     except Exception as e:
         result = default_error.copy()
@@ -210,38 +167,8 @@ def query_gemini_real(query: str, brand_name: str, api_key: str = "") -> dict:
             return {"engine": "Gemini", "brand_mentioned": False, "sentiment": "error", "competitors": [], "suggestion": f"Error: {err[:100]}", "response": "", "real": True}
         raw_response = r.json()["candidates"][0]["content"]["parts"][0]["text"]
 
-        # Step 2: analyze with Groq (cheaper + faster for analysis)
-        analysis_prompt = f"""Analyze this AI response for brand visibility.
-
-Query: "{query}"
-Brand to track: "{brand_name}"
-AI Response: "{raw_response[:1000]}"
-
-Return ONLY valid JSON, no markdown:
-{{
-    "brand_mentioned": true or false,
-    "position": 0,
-    "sentiment": "positive|neutral|negative|not_mentioned",
-    "competitors": ["name1", "name2"],
-    "suggestion": "one specific improvement tip"
-}}"""
-
-        analysis = groq_client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=[{"role": "user", "content": analysis_prompt}],
-            max_tokens=256,
-            temperature=0.1,
-        )
-        raw_analysis = analysis.choices[0].message.content.strip()
-        start = raw_analysis.find("{")
-        end = raw_analysis.rfind("}") + 1
-
-        if start != -1 and end != 0:
-            result = json.loads(raw_analysis[start:end])
-            result["response"] = raw_response[:500]
-            result["engine"] = "Gemini"
-            result["real"] = True
-            return result
+        # Step 2: Analyze for brand visibility (local — no extra API call)
+        return _analyze_response(raw_response, brand_name, "Gemini", query)
 
     except Exception as e:
         return {
@@ -576,12 +503,19 @@ def run_competitor_benchmark(brand_id: str, org_id: str) -> dict:
         SELECT DISTINCT query FROM engine_scans
         WHERE brand_id = %s
         ORDER BY query
-        LIMIT 5
+        LIMIT 3
     """, (brand_id,))
     if not query_rows:
         return {"error": "No brand scans found — run a brand scan first so the benchmark uses the same queries"}
 
     queries = [r[0] for r in query_rows]
+
+    # Fetch API keys before query filtering so groq_key is available for fallback generation
+    groq_key       = get_org_api_key(org_id, "groq")      if org_id else ""
+    anthropic_key  = get_org_api_key(org_id, "anthropic") if org_id else ""
+    openai_key     = get_org_api_key(org_id, "openai")    if org_id else ""
+    perplexity_key = get_org_api_key(org_id, "perplexity") if org_id else ""
+    gemini_key     = get_org_api_key(org_id, "gemini")    if org_id else ""
 
     # Filter out brand-specific queries for fair competitor comparison
     brand_name_lower = brand_name.lower()
@@ -605,15 +539,7 @@ def run_competitor_benchmark(brand_id: str, org_id: str) -> dict:
             category_queries = [q.strip() for q in raw.split("\n") if q.strip()][:3]
         except Exception:
             category_queries = [f"best {brand_name} competitors", f"companies like {brand_name}"]
-    queries = category_queries[:5]
-
-    # Same engine-selection logic as run_geo_scan: fetch each key once,
-    # use the same variable for the gate check and the dispatch call.
-    groq_key       = get_org_api_key(org_id, "groq")      if org_id else ""
-    anthropic_key  = get_org_api_key(org_id, "anthropic") if org_id else ""
-    openai_key     = get_org_api_key(org_id, "openai")    if org_id else ""
-    perplexity_key = get_org_api_key(org_id, "perplexity") if org_id else ""
-    gemini_key     = get_org_api_key(org_id, "gemini")    if org_id else ""
+    queries = category_queries[:3]
 
     active_engines = []
     if groq_key:       active_engines.append("Groq")
@@ -660,6 +586,10 @@ def run_competitor_benchmark(brand_id: str, org_id: str) -> dict:
                         result = query_groq_real(query, comp_name, client=org_groq_client, api_key=groq_key)
                     except Exception:
                         result = {"brand_mentioned": False, "position": 0, "sentiment": "error", "competitors": [], "suggestion": "", "response": "", "engine": "Groq", "real": True}
+
+                # Skip error results — don't persist or count failed API calls
+                if result.get("sentiment") == "error" or result.get("error"):
+                    continue
 
                 execute_write("""
                     INSERT INTO competitor_scans

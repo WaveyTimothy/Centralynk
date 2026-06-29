@@ -5,7 +5,7 @@ from app.services.geo_engine import run_geo_scan, run_competitor_benchmark
 def scan_brand_task(brand_id: str, queries: list):
     return run_geo_scan(brand_id, queries)
 
-@celery_app.task(name="app.tasks.competitor_benchmark_task", time_limit=120, soft_time_limit=90)
+@celery_app.task(name="app.tasks.competitor_benchmark_task", time_limit=300, soft_time_limit=240)
 def competitor_benchmark_task(brand_id: str, org_id: str):
     try:
         return run_competitor_benchmark(brand_id, org_id=org_id)

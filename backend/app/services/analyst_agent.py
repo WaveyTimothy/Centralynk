@@ -295,6 +295,24 @@ FREQUENTLY CO-MENTIONED COMPETITORS: {competitor_lines}
 RAW IMPROVEMENT SIGNALS FROM SCANS:
 {chr(10).join('  - ' + s for s in summary['raw_suggestions'][:8])}
 
+CRITICAL: These recommendations are for MARKETING MANAGERS, not engineers or developers.
+Write in plain business language. Every recommendation must be something a marketer can do or ask someone to do in plain terms.
+
+GOOD recommendations:
+- "Write a blog post answering 'What is [your product]?' to help AI engines learn about your brand"
+- "Get listed on G2, Capterra, and Trustpilot — AI engines frequently cite these review sites when recommending tools"
+- "Create an FAQ page answering the top 5 questions customers ask about your product"
+- "Reach out to 3 industry blogs and offer to write a guest post mentioning your brand"
+- "Update your LinkedIn company page description to clearly explain what problem you solve"
+
+BAD recommendations (never suggest these):
+- Anything mentioning DNS, servers, infrastructure, or technical systems
+- "Implement AI-powered analytics" or "leverage machine learning"
+- "Develop redundant systems" or technical architecture changes
+- Generic advice that could apply to any company
+
+Keep recommendations specific to the brand's actual data and category.
+
 Return a JSON array of 3–5 recommendations. Each must be:
 {{
   "engine": "Groq|Gemini|all",

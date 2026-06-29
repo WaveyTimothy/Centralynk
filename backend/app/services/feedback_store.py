@@ -8,21 +8,10 @@ No fine-tuning. No external service. Just Postgres + a SELECT.
 """
 
 import os
+import httpx
 from typing import Optional, Literal
 from pydantic import BaseModel, Field, field_validator
-from groq import Groq
 from app.core.database import execute_query, execute_write
-
-# Single source of truth — no duplicate declarations
-FEEDBACK_LOOP_PROVIDER = os.getenv("FEEDBACK_LOOP_PROVIDER", "groq")
-FEEDBACK_LOOP_MODEL = os.getenv("FEEDBACK_LOOP_MODEL", "llama-3.3-70b-versatile")
-OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://host.docker.internal:11434")
-
-groq_client = Groq(
-    api_key=os.getenv("GROQ_API_KEY", ""),
-    max_retries=0,
-    timeout=10.0,
-)
 
 AgentName = Literal["analyst_agent", "marketing_agent", "sales_agent", "geo_engine"]
 Score = int  # 1-5
@@ -120,38 +109,33 @@ def auto_score_recommendation(
     brand_context: str,
     evidence: str = "",
 ) -> Score:
-    """
-    Use Groq to score a recommendation 1-5.
-    Hard limits: max_retries=1, timeout=10s — never blocks workers.
-    Falls back to neutral score 3 on any failure.
-    """
+    """Score a recommendation 1-5 using local Ollama. Falls back to 3 on any failure."""
+    ollama_url = os.getenv("OLLAMA_URL", "http://ollama:11434")
     prompt = f"""Score this GEO recommendation 1-5.
 
 Brand context: {brand_context[:300]}
-Evidence from scans: {evidence[:200]}
+Evidence: {evidence[:200]}
 Recommendation: {recommendation_text}
 
-Scoring rubric:
-5 = specific + evidence-backed + actionable today + high expected impact
+5 = specific + evidence-backed + actionable + high impact
 4 = specific + mostly backed by data + clear action
 3 = reasonable but generic
-2 = vague or ignores the data
+2 = vague or ignores data
 1 = wrong or off-topic
 
 Return ONLY a single integer (1, 2, 3, 4, or 5). Nothing else."""
 
     try:
-        completion = groq_client.chat.completions.create(
-            model=FEEDBACK_LOOP_MODEL,
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=5,
-            temperature=0.0,
+        r = httpx.post(
+            f"{ollama_url}/api/generate",
+            json={"model": "llama3.2:3b", "prompt": prompt, "stream": False},
+            timeout=15.0,
         )
-        raw = completion.choices[0].message.content.strip()
-        score = int(raw[0])
+        result = r.json().get("response", "3").strip()
+        score = int(result[0]) if result and result[0].isdigit() else 3
         return max(1, min(5, score))
     except Exception as e:
-        print(f"Auto-score failed (neutral fallback): {e}")
+        print(f"Ollama scoring failed: {e}")
         return 3
 
 

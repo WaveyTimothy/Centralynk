@@ -313,7 +313,11 @@ BAD recommendations (never suggest these):
 
 Keep recommendations specific to the brand's actual data and category.
 
-Return a JSON array of 3–5 recommendations. Each must be:
+Return EXACTLY 3 recommendations maximum. Choose only the 3 most impactful ones.
+Priority order: critical first, then high, then medium.
+Never return more than 3. Quality over quantity.
+
+Each must be:
 {{
   "engine": "Groq|Gemini|all",
   "query": "specific query this targets, or 'general'",
@@ -330,11 +334,10 @@ Prioritize: critical issues first, specific over vague, evidence-backed over gen
 Return ONLY the JSON array. No markdown, no explanation."""
 
     org_groq_key = get_org_api_key(org_id, "groq") if org_id else ""
-    _client = (
-        Groq(api_key=org_groq_key, max_retries=0, timeout=10.0)
-        if org_groq_key and org_groq_key != os.getenv("GROQ_API_KEY", "")
-        else groq_client
-    )
+    if not org_groq_key:
+        raise ValueError("No Groq API key configured. Please add your Groq key in Settings to use the AI analyst.")
+
+    _client = Groq(api_key=org_groq_key, max_retries=0, timeout=10.0)
 
     MAX_RETRIES = 3
     for attempt in range(MAX_RETRIES):
@@ -352,7 +355,7 @@ Return ONLY the JSON array. No markdown, no explanation."""
             if start == -1 or end == 0:
                 time.sleep(2 ** attempt)
                 continue
-            return json.loads(raw[start:end])
+            return json.loads(raw[start:end])[:3]
         except json.JSONDecodeError:
             time.sleep(2 ** attempt)
         except Exception as e:

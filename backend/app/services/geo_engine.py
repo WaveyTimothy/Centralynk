@@ -275,7 +275,8 @@ def run_geo_scan(brand_id: str, queries: list, org_id: str = None) -> dict:
     _, brand_name, domain, keywords = rows[0]
 
     # Scrape brand context to help engines understand what the brand does
-    brand_context = scrape_url(f"https://{domain}")
+    _domain = domain.replace("https://", "").replace("http://", "").rstrip("/")
+    brand_context = scrape_url(f"https://{_domain}")
     if not brand_context or "scrape failed" in brand_context:
         # Fallback to description from DB
         desc_rows = execute_query("SELECT description FROM brands WHERE id = %s", (brand_id,))

@@ -1338,6 +1338,8 @@ def audit_url(body: dict, user: dict = Depends(get_current_user)):
     url = body.get("url", "").strip()
     if not url:
         raise HTTPException(status_code=400, detail="URL required")
+    if not url or url in ("https", "http", "https:", "http:"):
+        raise HTTPException(status_code=400, detail="Please provide a full URL e.g. https://yoursite.com")
     if not url.startswith("http"):
         url = f"https://{url}"
     

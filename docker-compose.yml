@@ -119,3 +119,16 @@ networks:
 # Note: crawl4ai container must be connected to geo-tool_frontend network
 # Run once: docker network connect geo-tool_frontend crawl4ai
 
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:8080}
+    container_name: geo-frontend
+    restart: always
+    ports:
+      - "3000:80"
+    networks:
+      - frontend

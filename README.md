@@ -60,12 +60,12 @@ curl http://localhost:8080/health
 |--------|----------|-----------|
 | Groq (Llama 3.3) | [console.groq.com](https://console.groq.com) | ✅ Yes |
 | Gemini | [ai.google.dev](https://ai.google.dev) | ✅ Yes |
-| ChatGPT | [platform.openai.com](https://platform.openai.com) | ❌ Paid |
-| Claude | [console.anthropic.com](https://console.anthropic.com) | ❌ Paid |
-| Perplexity | [perplexity.ai/settings/api](https://perplexity.ai/settings/api) | ❌ Paid |
+| ChatGPT | [platform.openai.com](https://platform.openai.com) | ✅ Yes |
+| Claude | [console.anthropic.com](https://console.anthropic.com) | ✅ Yes |
+| Perplexity | [perplexity.ai/settings/api](https://perplexity.ai/settings/api) | ✅ Yes |
 | Mistral | [console.mistral.ai](https://console.mistral.ai) | ✅ Yes |
 | Cohere | [dashboard.cohere.com](https://dashboard.cohere.com) | ✅ Yes |
-| xAI (Grok) | [console.x.ai](https://console.x.ai) | ❌ Paid |
+| xAI (Grok) | [console.x.ai](https://console.x.ai) | ✅ Yes |
 
 ## Environment Variables
 

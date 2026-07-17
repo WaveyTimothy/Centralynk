@@ -9,6 +9,8 @@
 
 ## What is Centralynk?
 
+My first project in my free time! If the front-end is not connecting correctly to the backend, sorry, haven't checked tried it on another device yet. But www.centralynk.com is live, if you want access to try it on my personally hosted cloud I can let give you access, just send me an email on timdevlamynck96@gmail.com 
+
 Centralynk is an open-source **Generative Engine Optimization (GEO)** platform. It tracks how often your brand appears in AI-generated responses and tells you exactly what to fix.
 
 **The problem:** AI search engines (ChatGPT, Perplexity, Claude, Google AI Overview) are becoming the primary way people discover products and services. Traditional SEO doesn't work here. You need GEO.

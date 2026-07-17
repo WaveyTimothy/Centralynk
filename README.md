@@ -95,3 +95,23 @@ PRs welcome. Issues, feature requests, and bug reports appreciated.
 ## License
 
 MIT © Tim Devlamynck — [centralynk.com](https://centralynk.com)
+
+## Project Structure
+## Self-Host with Frontend
+
+```bash
+# Clone
+git clone https://github.com/WaveyTimothy/Centralynk
+cd Centralynk
+
+# Configure
+cp .env.example .env
+cp frontend/.env.example frontend/.env
+# Edit both .env files
+
+# Run everything
+docker compose up -d
+```
+
+- Backend API: http://localhost:8080
+- Frontend dashboard: http://localhost:3000

@@ -1,4 +1,4 @@
-export const BASE_API_URL = "https://api.centralynk.com";
+export const BASE_API_URL = import.meta.env.VITE_API_URL || "https://api.centralynk.com";
 
 
 const TOKEN_KEY = "authToken";

@@ -118,3 +118,15 @@ docker compose up -d
 
 - Backend API: http://localhost:8080
 - Frontend dashboard: http://localhost:3000
+
+## One-line install
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/WaveyTimothy/Centralynk/main/install.sh | bash
+```
+
+This will:
+- Download everything needed
+- Generate secure random passwords
+- Start all services
+- Open at http://localhost:3000

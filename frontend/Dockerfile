@@ -5,11 +5,10 @@ RUN bun install
 COPY . .
 ARG VITE_API_URL=http://localhost:8080
 ENV VITE_API_URL=$VITE_API_URL
-RUN bun run build
+RUN bun run build:dev
 
-FROM oven/bun:1-alpine
-WORKDIR /app
-COPY --from=builder /app/.output ./.output
-COPY --from=builder /app/package.json ./package.json
-EXPOSE 3000
-CMD ["bun", ".output/server/index.mjs"]
+FROM nginx:alpine
+COPY --from=builder /app/.output/public /usr/share/nginx/html
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+EXPOSE 80
+CMD ["nginx", "-g", "daemon off;"]
